@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================================
+   OurLife design tokens — the trail-map palette, as RGB triplets so Tailwind
+   can apply alpha (rgb(var(--x) / <alpha>)). Light + dark, theme-aware.
+   ========================================================================= */
+:root {
+  --bg: 236 230 214;
+  --bg-raised: 246 242 230;
+  --bg-sunken: 226 219 199;
+  --fg: 28 38 34;
+  --fg-muted: 75 86 79;
+  --border: 214 208 193;
+  --teal: 42 98 89;
+  --clay: 153 80 47;
+  --gold: 143 106 29;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: 23 30 27;
+    --bg-raised: 32 42 38;
+    --bg-sunken: 18 24 22;
+    --fg: 237 231 216;
+    --fg-muted: 169 174 156;
+    --border: 54 61 56;
+    --teal: 111 187 169;
+    --clay: 226 148 103;
+    --gold: 231 186 85;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: 23 30 27;
+  --bg-raised: 32 42 38;
+  --bg-sunken: 18 24 22;
+  --fg: 237 231 216;
+  --fg-muted: 169 174 156;
+  --border: 54 61 56;
+  --teal: 111 187 169;
+  --clay: 226 148 103;
+  --gold: 231 186 85;
+}
+
+:root[data-theme="light"] {
+  --bg: 236 230 214;
+  --bg-raised: 246 242 230;
+  --bg-sunken: 226 219 199;
+  --fg: 28 38 34;
+  --fg-muted: 75 86 79;
+  --border: 214 208 193;
+  --teal: 42 98 89;
+  --clay: 153 80 47;
+  --gold: 143 106 29;
+}
+
+html {
+  background: rgb(var(--bg));
+  color: rgb(var(--fg));
+}
+
+body {
+  background: rgb(var(--bg));
+  color: rgb(var(--fg));
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgb(var(--gold) / 0.25);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

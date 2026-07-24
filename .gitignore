@@ -1,0 +1,34 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files — NEVER commit real Supabase keys or personal financial data
+.env
+.env*.local
+.env.local
+
+# local, private seed data (real personal financial figures live here, never in git)
+/supabase/seed.local.sql
+/supabase/.temp
+/.vercel
+
+# typescript
+*.tsbuildinfo
