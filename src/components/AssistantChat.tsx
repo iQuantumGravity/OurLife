@@ -213,9 +213,9 @@ export default function AssistantChat({
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <section className="flex min-h-[28rem] flex-col rounded-2xl border border-black/10 bg-white/70 p-4">
+      <section className="flex min-h-[28rem] flex-col rounded-card border border-line bg-raised p-4">
         {notice ? (
-          <p className="mb-4 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="mb-4 rounded-card border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-fg">
             {notice}
           </p>
         ) : null}
@@ -223,7 +223,7 @@ export default function AssistantChat({
         <div className="flex-1 space-y-4 overflow-y-auto">
           {bubbles.length === 0 ? (
             <div className="space-y-4">
-              <p className="text-sm text-black/60">
+              <p className="text-sm text-muted">
                 Ask for a change, a read on where you stand, or point me at a statement you just
                 uploaded. Anything I change is written into the plan journal.
               </p>
@@ -234,7 +234,7 @@ export default function AssistantChat({
                     type="button"
                     onClick={() => send(s)}
                     disabled={!ready || busy}
-                    className="rounded-full border border-black/15 px-3 py-1.5 text-xs text-black/70 transition hover:border-black/40 disabled:opacity-50"
+                    className="rounded-full border border-line px-3 py-1.5 text-xs text-muted transition hover:border-teal hover:text-teal disabled:opacity-50"
                   >
                     {s}
                   </button>
@@ -248,23 +248,23 @@ export default function AssistantChat({
                   className={
                     "inline-block max-w-[46rem] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm " +
                     (bubble.role === "user"
-                      ? "bg-black/85 text-white"
-                      : "border border-black/10 bg-white text-black/85")
+                      ? "bg-teal text-white"
+                      : "border border-line bg-sunken text-fg")
                   }
                 >
                   {bubble.content}
                 </div>
                 {bubble.actions && bubble.actions.length > 0 ? (
-                  <p className="mt-1 text-xs text-black/45">
+                  <p className="mt-1 text-xs text-muted">
                     {bubble.actions.map((a) => toolLabel(a.tool)).join(" · ")}
                   </p>
                 ) : null}
               </div>
             ))
           )}
-          {busy ? <p className="text-sm text-black/50">Thinking it through…</p> : null}
+          {busy ? <p className="text-sm text-muted">Thinking it through…</p> : null}
           {error ? (
-            <p className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <p className="rounded-card border border-clay/40 bg-clay/10 px-4 py-3 text-sm text-clay">
               {error}
             </p>
           ) : null}
@@ -272,7 +272,7 @@ export default function AssistantChat({
         </div>
 
         <form
-          className="mt-4 flex items-end gap-2"
+          className="mt-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-end"
           onSubmit={(event) => {
             event.preventDefault();
             send(draft);
@@ -290,12 +290,12 @@ export default function AssistantChat({
             rows={2}
             disabled={!ready || busy}
             placeholder={ready ? "Tell me what changed, or ask what it means…" : "Connect Claude to start"}
-            className="min-h-[3rem] flex-1 resize-y rounded-xl border border-black/15 bg-white px-3 py-2 text-sm outline-none focus:border-black/40 disabled:opacity-60"
+            className="min-h-[3rem] flex-1 resize-y rounded-card border border-line bg-sunken px-3 py-2 text-sm text-fg outline-none focus:border-teal disabled:opacity-60"
           />
           <button
             type="submit"
             disabled={!ready || busy || !draft.trim()}
-            className="rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white transition disabled:opacity-40"
+            className="rounded-card bg-teal px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             Send
           </button>
@@ -303,10 +303,10 @@ export default function AssistantChat({
       </section>
 
       <aside className="space-y-6">
-        <div className="rounded-2xl border border-black/10 bg-white/70 p-4">
-          <h2 className="text-xs uppercase tracking-widest text-black/50">Documents</h2>
+        <div className="rounded-card border border-line bg-raised p-4">
+          <h2 className="font-mono text-[11px] uppercase tracking-widest text-muted">Documents</h2>
           {docs.length === 0 ? (
-            <p className="mt-3 text-sm text-black/55">
+            <p className="mt-3 text-sm text-muted">
               Nothing uploaded yet. Add pay stubs or statements on the Statements page and they'll
               show up here to be read.
             </p>
@@ -314,8 +314,8 @@ export default function AssistantChat({
             <ul className="mt-3 space-y-3">
               {docs.map((doc) => (
                 <li key={doc.id} className="text-sm">
-                  <p className="font-medium text-black/80">{doc.label ?? doc.kind.replace(/_/g, " ")}</p>
-                  <p className="text-xs text-black/50">
+                  <p className="font-medium text-fg">{doc.label ?? doc.kind.replace(/_/g, " ")}</p>
+                  <p className="text-xs text-muted">
                     {(doc.period_label ? doc.period_label + " · " : "") + doc.status}
                   </p>
                   {doc.status !== "parsed" ? (
@@ -323,7 +323,7 @@ export default function AssistantChat({
                       type="button"
                       onClick={() => parse(doc.id)}
                       disabled={!ready || parsing === doc.id}
-                      className="mt-1 rounded-full border border-black/15 px-3 py-1 text-xs transition hover:border-black/40 disabled:opacity-50"
+                      className="mt-1 rounded-full border border-line px-3 py-1 text-xs text-muted transition hover:border-teal hover:text-teal disabled:opacity-50"
                     >
                       {parsing === doc.id ? "Reading…" : "Read into the plan"}
                     </button>
@@ -334,16 +334,16 @@ export default function AssistantChat({
           )}
         </div>
 
-        <div className="rounded-2xl border border-black/10 bg-white/70 p-4">
-          <h2 className="text-xs uppercase tracking-widest text-black/50">Recent changes</h2>
+        <div className="rounded-card border border-line bg-raised p-4">
+          <h2 className="font-mono text-[11px] uppercase tracking-widest text-muted">Recent changes</h2>
           {recentChanges.length === 0 ? (
-            <p className="mt-3 text-sm text-black/55">No changes recorded yet.</p>
+            <p className="mt-3 text-sm text-muted">No changes recorded yet.</p>
           ) : (
-            <ul className="mt-3 space-y-2 text-sm text-black/70">
+            <ul className="mt-3 space-y-2 text-sm text-muted">
               {recentChanges.map((change, index) => (
                 <li key={change.created_at + index}>
-                  <span className="text-black/85">{change.summary ?? change.action}</span>
-                  <span className="block text-xs text-black/45">
+                  <span className="text-fg">{change.summary ?? change.action}</span>
+                  <span className="block text-xs text-muted">
                     {new Date(change.created_at).toLocaleDateString()} · {change.source}
                   </span>
                 </li>
