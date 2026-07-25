@@ -110,3 +110,25 @@ Both run as the signed-in user, so row-level security is what keeps a household'
 
 - `0001_init.sql` — households, members, baseline, pay stubs, document metadata, private storage bucket.
 - `0002_living_layer.sql` — document parsing state, `document_line_items`, `chat_threads` / `chat_messages`, `plan_events` (the journal), `scenarios`.
+## Google sign-in
+
+The login page shows a "Continue with Google" button beside the email/password form.
+Supabase owns the OAuth handshake; the repo only holds the button.
+
+1. Google Cloud console (project `ourlife-503422`) -> **APIs & Services -> OAuth consent
+   screen**. User type **External**; add your own address as a test user while the app is
+   unverified.
+2. **APIs & Services -> Credentials -> Create credentials -> OAuth client ID**, application
+   type **Web application**:
+   - Authorised JavaScript origin: `https://our-life-gules.vercel.app`
+   - Authorised redirect URI: `https://qwyrurrkmhwdcrgssrpf.supabase.co/auth/v1/callback`
+3. Supabase -> **Authentication -> Sign In / Providers -> Google**: enable it, paste the
+   Client ID and Client Secret, Save.
+4. Google returns to Supabase, Supabase returns to `/auth/callback`, and that route
+   exchanges the one-time code for a session cookie before forwarding to `/dashboard`.
+
+Add `http://localhost:3000` as a second authorised origin if you want Google sign-in to
+work while developing locally.
+
+Google Cloud enforces 2-step verification account-wide, so the console stays locked until
+2SV is enabled on the Google account that owns the project.
