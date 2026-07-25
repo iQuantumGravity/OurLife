@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/config";
+import GoogleSignIn from "@/components/GoogleSignIn";
 
 type Mode = "signin" | "signup";
 
@@ -103,6 +104,15 @@ export default function LoginPage() {
                 : "Create account"}
           </button>
         </form>
+        <div className="my-5 flex items-center gap-3">
+          <span className="h-px flex-1 bg-line" />
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
+            or
+          </span>
+          <span className="h-px flex-1 bg-line" />
+        </div>
+
+        <GoogleSignIn />
 
         {status && <p className="mt-4 text-sm text-clay">{status}</p>}
 

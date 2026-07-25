@@ -39,9 +39,9 @@ Without Supabase keys the app still runs — it shows the sample plan and a
 ## Connect Supabase
 
 1. Create a Supabase project (or reuse one).
-2. Apply the schema in [`supabase/migrations/`](./supabase/migrations/) —
-   `0001_init.sql` then `0002_plaid.sql` — via the Supabase MCP
-   `apply_migration` tool or `supabase db push`.
+2. Apply the schema in [`supabase/migrations/`](./supabase/migrations/), in
+   order (`0001_init.sql`, `0002_living_layer.sql`, `0003_plaid.sql`), via the
+   Supabase MCP `apply_migration` tool or `supabase db push`.
 3. Copy your Project URL + anon key (and, for Plaid, the service_role key)
    from **Project Settings → API** into `.env.local`.
 4. In **Authentication → URL Configuration**, add `http://localhost:3000` and
@@ -86,3 +86,58 @@ server, and no i18n/rewrites — but **upgrading to the latest Next major is the
 #1 task before this holds real financial data in production.** That upgrade
 touches the async `cookies()` API in `src/lib/supabase/*`, so it's a deliberate
 change, not a drive-by bump.
+## The assistant (Claude)
+
+`/assistant` is the living part of the tool. You type what happened or what you want to explore, and Claude works on the plan itself rather than just talking about it:
+
+- **Reads the plan** — baseline assumptions, milestones, logged pay stubs, uploaded documents, saved scenarios and the change journal.
+- **Edits the plan** — merges baseline changes, adds/updates milestones, logs paychecks, saves what-if scenarios.
+- **Reads documents** — pulls an uploaded pay stub / statement (PDF, image, CSV) out of the private bucket, extracts the transactions and balances, and writes them into `document_line_items`, plus a `pay_stubs` row when it is a stub.
+- **Keeps a journal** — every change lands in `plan_events` with a before/after snapshot and who asked for it, so nothing changes silently.
+
+Nothing is hard-deleted: dropped milestones keep a `dropped` status, scenarios are deactivated rather than removed, and documents keep their parse history.
+
+### Connect Claude
+
+1. Create an API key in the [Anthropic Console](https://console.anthropic.com/) → API keys.
+2. Add `ANTHROPIC_API_KEY` as an environment variable (Vercel → Settings → Environment Variables, or `.env.local` locally). It is server-side only and never shipped to the browser.
+3. Optionally set `ANTHROPIC_MODEL` to pin a model — left blank, the app asks the API for the newest Sonnet the key can see.
+4. Redeploy. Without the key the app still runs; the assistant page just explains that it is not connected.
+
+Note: this uses the Anthropic **API** (metered, billed per token). A Claude.ai subscription is a separate product and cannot be used as an app backend.
+
+### API surface
+
+- `POST /api/assistant` — `{ message, threadId? }` → runs the tool loop, persists the exchange, returns `{ reply, threadId, actions }`.
+- `POST /api/documents/[id]/parse` — extracts one uploaded document into the model.
+
+Both run as the signed-in user, so row-level security is what keeps a household's numbers private — the assistant itself uses no service-role key. (The separate Plaid integration below does use one, scoped to its own `plaid_items` table; see [`supabase/README.md`](./supabase/README.md).)
+
+## Schema
+
+- `0001_init.sql` — households, members, baseline, pay stubs, document metadata, private storage bucket.
+- `0002_living_layer.sql` — document parsing state, `document_line_items`, `chat_threads` / `chat_messages`, `plan_events` (the journal), `scenarios`.
+- `0003_plaid.sql` — `plaid_items`, `transactions` (bank-account connections and synced transaction data).
+
+## Google sign-in
+
+The login page shows a "Continue with Google" button beside the email/password form.
+Supabase owns the OAuth handshake; the repo only holds the button.
+
+1. Google Cloud console (project `ourlife-503422`) -> **APIs & Services -> OAuth consent
+   screen**. User type **External**; add your own address as a test user while the app is
+   unverified.
+2. **APIs & Services -> Credentials -> Create credentials -> OAuth client ID**, application
+   type **Web application**:
+   - Authorised JavaScript origin: `https://our-life-gules.vercel.app`
+   - Authorised redirect URI: `https://qwyrurrkmhwdcrgssrpf.supabase.co/auth/v1/callback`
+3. Supabase -> **Authentication -> Sign In / Providers -> Google**: enable it, paste the
+   Client ID and Client Secret, Save.
+4. Google returns to Supabase, Supabase returns to `/auth/callback`, and that route
+   exchanges the one-time code for a session cookie before forwarding to `/dashboard`.
+
+Add `http://localhost:3000` as a second authorised origin if you want Google sign-in to
+work while developing locally.
+
+Google Cloud enforces 2-step verification account-wide, so the console stays locked until
+2SV is enabled on the Google account that owns the project.

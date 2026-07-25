@@ -17,15 +17,16 @@ The `migrations/` folder is the source of truth for the database schema.
 Every table has **row-level security**: a member can only read or write rows for
 a household they belong to. Uploaded statements go to a **private** `statements`
 bucket, namespaced by `{household_id}/…`, with matching storage policies.
-`plaid_items` and `transactions` (added in `migrations/0002_plaid.sql`) hold live
+`plaid_items` and `transactions` (added in `migrations/0003_plaid.sql`) hold live
 bank-access tokens and the data synced with them; see the comments in that
 migration for why `plaid_items` has no policies at all.
 
 ## Applying it
 
 **Option A — Supabase MCP (from this assistant):**
-apply `migrations/0001_init.sql` and `migrations/0002_plaid.sql` with the
-`apply_migration` tool against your chosen project.
+apply `migrations/0001_init.sql`, `migrations/0002_living_layer.sql`, and
+`migrations/0003_plaid.sql`, in order, with the `apply_migration` tool
+against your chosen project.
 
 **Option B — Supabase CLI:**
 ```bash
