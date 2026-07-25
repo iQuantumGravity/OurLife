@@ -13,8 +13,10 @@
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
     "next": "^14.2.33",
+    "plaid": "^45.0.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-plaid-link": "^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

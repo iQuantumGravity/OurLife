@@ -4,6 +4,7 @@ const links = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/console", label: "Pay stubs" },
   { href: "/uploads", label: "Statements" },
+  { href: "/accounts", label: "Accounts" },
 ];
 
 export function Nav({
