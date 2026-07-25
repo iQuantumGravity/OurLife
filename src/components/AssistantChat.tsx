@@ -289,7 +289,7 @@ export default function AssistantChat({
             }}
             rows={2}
             disabled={!ready || busy}
-            placeholder={ready ? "Tell me what changed, or ask what it means…" : "Connect Claude to start"}
+            placeholder={ready ? "Tell me what changed, or ask what it means…" : "See the note above to get started"}
             className="min-h-[3rem] flex-1 resize-y rounded-xl border border-black/15 bg-white px-3 py-2 text-sm outline-none focus:border-black/40 disabled:opacity-60"
           />
           <button
