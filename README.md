@@ -21,6 +21,9 @@ and **Tailwind**, deployable on **Vercel**.
 - **Bank connections (Plaid)** — link a bank (SoFi and most US institutions)
   and sync transactions in automatically, instead of uploading statements by
   hand. Optional — hidden until Plaid keys are set.
+- **Onboarding** — a resumable, skippable Life + Money questionnaire (solo or
+  couple mode, with a side-by-side comparison screen), plus inviting a
+  partner by email or phone to collaborate on the plan.
 
 Your real numbers never live in this repo — they live in your private Supabase
 database. The committed baseline is a clearly-labeled sample template.
@@ -40,8 +43,8 @@ Without Supabase keys the app still runs — it shows the sample plan and a
 
 1. Create a Supabase project (or reuse one).
 2. Apply the schema in [`supabase/migrations/`](./supabase/migrations/), in
-   order (`0001_init.sql`, `0002_living_layer.sql`, `0003_plaid.sql`), via the
-   Supabase MCP `apply_migration` tool or `supabase db push`.
+   order (`0001_init.sql` through `0004_onboarding.sql`), via the Supabase
+   MCP `apply_migration` tool or `supabase db push`.
 3. Copy your Project URL + anon key (and, for Plaid, the service_role key)
    from **Project Settings → API** into `.env.local`.
 4. In **Authentication → URL Configuration**, add `http://localhost:3000` and
@@ -64,7 +67,7 @@ same file for the optional Plaid setup steps.
 - Automated parsing of uploaded PDF statements (balances, transactions) into the model.
 - Per-month projections so pay stubs re-forecast the full curve, not just the near term.
 - Editable baseline & assumptions in the UI (income, VP band, goals, home price).
-- Invite flow to add your partner to the household.
+- Fold onboarding answers (goals, debt, risk tolerance) into the plan baseline automatically.
 - The full branching timeline (Steady Growth vs. Dream Payout) and the
   investment waterfall from the original plan.
 
@@ -118,6 +121,7 @@ Both run as the signed-in user, so row-level security is what keeps a household'
 - `0001_init.sql` — households, members, baseline, pay stubs, document metadata, private storage bucket.
 - `0002_living_layer.sql` — document parsing state, `document_line_items`, `chat_threads` / `chat_messages`, `plan_events` (the journal), `scenarios`.
 - `0003_plaid.sql` — `plaid_items`, `transactions` (bank-account connections and synced transaction data).
+- `0004_onboarding.sql` — `user_profiles`, `partner_invites`, `onboarding_state`, `onboarding_answers` (the Life/Money questionnaire and partner-invite flow).
 
 ## Google sign-in
 

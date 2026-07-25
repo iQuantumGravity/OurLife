@@ -83,9 +83,9 @@ export default async function AssistantPage() {
   return (
     <div className="space-y-6">
       <header className="space-y-2">
-        <p className="text-xs uppercase tracking-widest text-black/50">Assistant</p>
+        <p className="font-mono text-xs uppercase tracking-widest text-muted">Assistant</p>
         <h1 className="font-display text-3xl">Talk to the plan.</h1>
-        <p className="max-w-2xl text-sm text-black/65">
+        <p className="max-w-2xl text-sm text-muted">
           Ask questions, log what actually happened, run a what-if, or have an uploaded statement
           read and folded in. Changes are made in the plan itself and written to a journal, so the
           two of you can always see how it evolved.

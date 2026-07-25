@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Libre_Franklin, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -27,6 +27,15 @@ export const metadata: Metadata = {
   title: "OurLife — Daniel & Wednesday",
   description:
     "A living, interactive life & financial plan — pay stubs, statements, and the map of where it's all going.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ece6d6" },
+    { media: "(prefers-color-scheme: dark)", color: "#171e1b" },
+  ],
 };
 
 export default function RootLayout({

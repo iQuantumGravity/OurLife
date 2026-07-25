@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 type CookieItem = { name: string; value: string; options?: CookieOptions };
 
-const PUBLIC_PREFIXES = ["/login", "/auth"];
+const PUBLIC_PREFIXES = ["/login", "/auth", "/invite"];
 
 // Refreshes the Supabase session on every request and guards protected routes.
 export async function updateSession(request: NextRequest) {
