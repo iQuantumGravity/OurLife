@@ -10,14 +10,16 @@ import {
 } from "./schema";
 
 function toCamelState(row: any): OnboardingState {
-  return OnboardingStateSchema.parse({
+  // safeParse: a stored value the schema rejects should degrade to a default,
+  // never take down the page that would let the user fix it.
+  const parsed = OnboardingStateSchema.safeParse({
     mode: row?.mode ?? "individual",
-    comparisonViewedAt: row?.comparison_viewed_at ?? null,
   });
+  return parsed.success ? parsed.data : { mode: "individual" };
 }
 
 function toCamelAnswers(row: any): OnboardingAnswers {
-  return OnboardingAnswersSchema.parse({
+  const parsed = OnboardingAnswersSchema.safeParse({
     relationshipStatus: row?.relationship_status ?? null,
     hasPartner: row?.has_partner ?? null,
     married: row?.married ?? null,
@@ -32,41 +34,63 @@ function toCamelAnswers(row: any): OnboardingAnswers {
     topGoals: row?.top_goals ?? [],
     incomeType: row?.income_type ?? null,
     existingDebt: row?.existing_debt ?? [],
-    currentSavings: row?.current_savings ?? null,
+    currentSavings:
+      row?.current_savings === null || row?.current_savings === undefined
+        ? null
+        : Number(row.current_savings),
     riskTolerance: row?.risk_tolerance ?? null,
     lifeTrackCompletedAt: row?.life_track_completed_at ?? null,
     moneyTrackCompletedAt: row?.money_track_completed_at ?? null,
+    comparisonViewedAt: row?.comparison_viewed_at ?? null,
     skippedFields: row?.skipped_fields ?? [],
     raw: row?.raw ?? {},
   });
+
+  if (parsed.success) return parsed.data;
+
+  // A value outside the schema's bounds (hand-edited in SQL, backfilled, or
+  // written by an older build) must not 500 the onboarding page forever.
+  // Keep the progress/skip bookkeeping so the wizard still resumes correctly.
+  return {
+    ...emptyOnboardingAnswers,
+    lifeTrackCompletedAt: row?.life_track_completed_at ?? null,
+    moneyTrackCompletedAt: row?.money_track_completed_at ?? null,
+    comparisonViewedAt: row?.comparison_viewed_at ?? null,
+    skippedFields: Array.isArray(row?.skipped_fields) ? row.skipped_fields : [],
+  };
 }
 
+const COLUMN_OF: Record<keyof OnboardingAnswersPatch, string> = {
+  relationshipStatus: "relationship_status",
+  hasPartner: "has_partner",
+  married: "married",
+  planToMarry: "plan_to_marry",
+  marriageTimeline: "marriage_timeline",
+  kidsStatus: "kids_status",
+  kidsCount: "kids_count",
+  kidsTimelineYears: "kids_timeline_years",
+  retirementAge: "retirement_age",
+  location: "location",
+  vision: "vision",
+  topGoals: "top_goals",
+  incomeType: "income_type",
+  existingDebt: "existing_debt",
+  currentSavings: "current_savings",
+  riskTolerance: "risk_tolerance",
+  lifeTrackCompletedAt: "life_track_completed_at",
+  moneyTrackCompletedAt: "money_track_completed_at",
+  comparisonViewedAt: "comparison_viewed_at",
+  skippedFields: "skipped_fields",
+  raw: "raw",
+};
+
 function toSnakePatch(patch: OnboardingAnswersPatch): Record<string, unknown> {
-  const map: Record<keyof OnboardingAnswersPatch, string> = {
-    relationshipStatus: "relationship_status",
-    hasPartner: "has_partner",
-    married: "married",
-    planToMarry: "plan_to_marry",
-    marriageTimeline: "marriage_timeline",
-    kidsStatus: "kids_status",
-    kidsCount: "kids_count",
-    kidsTimelineYears: "kids_timeline_years",
-    retirementAge: "retirement_age",
-    location: "location",
-    vision: "vision",
-    topGoals: "top_goals",
-    incomeType: "income_type",
-    existingDebt: "existing_debt",
-    currentSavings: "current_savings",
-    riskTolerance: "risk_tolerance",
-    lifeTrackCompletedAt: "life_track_completed_at",
-    moneyTrackCompletedAt: "money_track_completed_at",
-    skippedFields: "skipped_fields",
-    raw: "raw",
-  };
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(patch)) {
-    const column = map[key as keyof OnboardingAnswersPatch];
+    // Skipping `undefined` matters: an upsert writes every column present in
+    // the payload, so a stray key would blank a column the user never touched.
+    if (value === undefined) continue;
+    const column = COLUMN_OF[key as keyof OnboardingAnswersPatch];
     if (column) out[column] = value;
   }
   return out;
@@ -86,18 +110,15 @@ export async function getOnboardingState(
 
 export async function saveOnboardingState(
   householdId: string,
-  patch: Partial<{
-    mode: OnboardingState["mode"];
-    comparisonViewedAt: string | null;
-  }>,
+  patch: Partial<{ mode: OnboardingState["mode"] }>,
 ) {
   const supabase = createClient();
   const row: Record<string, unknown> = { household_id: householdId };
   if (patch.mode !== undefined) row.mode = patch.mode;
-  if (patch.comparisonViewedAt !== undefined)
-    row.comparison_viewed_at = patch.comparisonViewedAt;
-
-  await supabase.from("onboarding_state").upsert(row, { onConflict: "household_id" });
+  const { error } = await supabase
+    .from("onboarding_state")
+    .upsert(row, { onConflict: "household_id" });
+  return error ? { error: error.message } : { ok: true as const };
 }
 
 export async function getOnboardingAnswers(
@@ -125,9 +146,10 @@ export async function saveOnboardingAnswers(
     user_id: userId,
     ...toSnakePatch(patch),
   };
-  await supabase
+  const { error } = await supabase
     .from("onboarding_answers")
     .upsert(row, { onConflict: "household_id,user_id" });
+  return error ? { error: error.message } : { ok: true as const };
 }
 
 export interface MemberAnswers {
@@ -168,81 +190,70 @@ export interface InviteRow {
   status: "pending" | "accepted" | "declined";
   token: string;
   created_at: string;
+  expires_at: string;
 }
 
 export async function listInvites(householdId: string): Promise<InviteRow[]> {
   const supabase = createClient();
   const { data } = await supabase
     .from("partner_invites")
-    .select("id, invitee_email, invitee_phone, status, token, created_at")
+    .select("id, invitee_email, invitee_phone, status, token, created_at, expires_at")
     .eq("household_id", householdId)
     .order("created_at", { ascending: false });
   return (data ?? []) as InviteRow[];
 }
 
-/** Looks up an existing account by email/phone via the search-safe RPC. */
-export async function findUserByContact(
-  email: string | null,
-  phone: string | null,
-): Promise<string | null> {
-  const supabase = createClient();
-  const { data } = await supabase.rpc("find_user_by_contact", {
-    p_email: email,
-    p_phone: phone,
-  });
-  return (data as string | null) ?? null;
-}
-
-function randomToken(): string {
-  const bytes = new Uint8Array(24);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
+/**
+ * Create an invite. The contact lookup, token generation and insert all happen
+ * inside one SECURITY DEFINER function so the app never exposes a standalone
+ * "does this email have an account" probe, and never handles the matched uuid.
+ */
 export async function createInvite(
   householdId: string,
-  inviterUserId: string,
   contact: { email?: string; phone?: string },
 ) {
   const supabase = createClient();
-  const matchedUserId = await findUserByContact(
-    contact.email ?? null,
-    contact.phone ?? null,
-  );
-  const token = randomToken();
-
   const { data, error } = await supabase
-    .from("partner_invites")
-    .insert({
-      household_id: householdId,
-      inviter_user_id: inviterUserId,
-      invitee_user_id: matchedUserId,
-      invitee_email: contact.email ?? null,
-      invitee_phone: contact.phone ?? null,
-      token,
+    .rpc("create_partner_invite", {
+      p_household_id: householdId,
+      p_email: contact.email ?? null,
+      p_phone: contact.phone ?? null,
     })
-    .select("id, token")
-    .single();
+    .maybeSingle();
 
-  if (error || !data) {
-    return { error: error?.message ?? "Could not create invite." };
-  }
-  return { ok: true, token: data.token as string, matched: Boolean(matchedUserId) };
+  if (error) return { error: error.message };
+  const row = data as { token: string; matched: boolean } | null;
+  if (!row) return { error: "Could not create invite." };
+  return { ok: true as const, token: row.token, matched: row.matched };
 }
 
 export async function cancelInvite(inviteId: string) {
   const supabase = createClient();
-  await supabase.from("partner_invites").delete().eq("id", inviteId);
+  // .select() so RLS filtering out every row surfaces as a failure instead of
+  // a silent success -- e.g. the partner accepted a moment ago in another tab.
+  const { data, error } = await supabase
+    .from("partner_invites")
+    .delete()
+    .eq("id", inviteId)
+    .select("id");
+
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: "That invite could no longer be cancelled." };
+  }
+  return { ok: true as const };
 }
 
 export interface InviteDetails {
   householdName: string;
   inviterName: string | null;
-  status: "pending" | "accepted" | "declined";
 }
 
-/** Public lookup by token, used by the /invite/[token] landing page — works
- * whether or not the visitor is signed in yet. */
+/**
+ * Public lookup by token for the /invite/[token] landing page -- works whether
+ * or not the visitor is signed in. Returns nothing for a consumed or expired
+ * token, so an old link can't be polled as a status oracle.
+ */
 export async function getInviteByToken(
   token: string,
 ): Promise<InviteDetails | null> {
@@ -253,13 +264,11 @@ export async function getInviteByToken(
   const row = data as {
     household_name: string | null;
     inviter_name: string | null;
-    status: string;
   } | null;
   if (!row) return null;
   return {
     householdName: row.household_name ?? "a household",
     inviterName: row.inviter_name ?? null,
-    status: row.status as InviteDetails["status"],
   };
 }
 
@@ -273,5 +282,5 @@ export async function respondToInvite(
     p_action: action,
   });
   if (error) return { error: error.message };
-  return { ok: true };
+  return { ok: true as const };
 }

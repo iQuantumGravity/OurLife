@@ -31,12 +31,14 @@ export function Comparison({
   mine,
   partner,
   partnerName,
+  disabled,
   onContinue,
 }: {
   mine: OnboardingAnswers;
   partner: OnboardingAnswers;
   partnerName: string | null;
-  onContinue: () => Promise<void>;
+  disabled?: boolean;
+  onContinue: () => Promise<boolean>;
 }) {
   return (
     <div className="rounded-card border border-line bg-raised p-6">
@@ -115,7 +117,8 @@ export function Comparison({
       <button
         type="button"
         onClick={onContinue}
-        className="mt-6 rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90"
+        disabled={disabled}
+        className="mt-6 rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
       >
         Continue to money
       </button>

@@ -9,33 +9,56 @@ export function PartnerStep({
   step,
   hasPartner,
   invites,
+  locked,
   onAnswer,
   onSkip,
+  onError,
 }: {
   step: PartnerStepConfig;
   hasPartner: boolean | null;
   invites: InviteRow[];
-  onAnswer: (value: boolean) => Promise<void>;
-  onSkip: () => Promise<void>;
+  locked: boolean;
+  onAnswer: (value: boolean) => Promise<boolean>;
+  onSkip: () => Promise<boolean>;
+  onError: (msg: string | null) => void;
 }) {
-  // Local, not-yet-saved choice -- lets someone say "yes" and still stay on
-  // this step to search/invite before the wizard advances.
+  // Local, not-yet-saved choice -- lets someone say "yes" and stay on this step
+  // to search/invite before the wizard advances.
   const [choice, setChoice] = useState<boolean | null>(hasPartner);
   const [contact, setContact] = useState("");
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ ok?: boolean; error?: string; matched?: boolean; inviteUrl?: string } | null>(null);
+  const [sent, setSent] = useState<{ matched: boolean; url: string } | null>(null);
+  const [origin, setOrigin] = useState("");
 
   const pending = invites.filter((i) => i.status === "pending");
+  const hasInvite = pending.length > 0 || sent !== null;
 
   async function send() {
+    const value = contact.trim();
+    if (!value) return;
     setBusy(true);
-    setResult(null);
-    const isEmail = contact.includes("@");
-    const res = await invitePartner(isEmail ? { email: contact } : { phone: contact });
+    onError(null);
+    const isEmail = value.includes("@");
+    const res = await invitePartner(isEmail ? { email: value } : { phone: value });
     setBusy(false);
+    if (!res.ok) {
+      onError(res.error);
+      return;
+    }
     setContact("");
-    setResult(res);
+    if (typeof window !== "undefined") setOrigin(window.location.origin);
+    setSent({ matched: res.matched, url: res.inviteUrl });
   }
+
+  async function cancel(id: string) {
+    setBusy(true);
+    onError(null);
+    const res = await cancelInvite(id);
+    setBusy(false);
+    if (res?.error) onError(res.error);
+  }
+
+  const disabled = locked || busy;
 
   return (
     <div className="rounded-card border border-line bg-raised p-6">
@@ -46,22 +69,25 @@ export function PartnerStep({
         <div className="mt-5 flex flex-wrap items-center gap-3">
           <button
             type="button"
+            disabled={disabled}
             onClick={() => setChoice(true)}
-            className="rounded-card border border-line bg-sunken px-4 py-2.5 font-medium text-fg transition hover:border-teal"
+            className="rounded-card border border-line bg-sunken px-4 py-2.5 font-medium text-fg transition hover:border-teal disabled:opacity-50"
           >
             {step.yesLabel}
           </button>
           <button
             type="button"
+            disabled={disabled}
             onClick={() => onAnswer(false)}
-            className="rounded-card border border-line bg-sunken px-4 py-2.5 font-medium text-fg transition hover:border-teal"
+            className="rounded-card border border-line bg-sunken px-4 py-2.5 font-medium text-fg transition hover:border-teal disabled:opacity-50"
           >
             {step.noLabel}
           </button>
           <button
             type="button"
             onClick={onSkip}
-            className="font-mono text-[11px] uppercase tracking-wider text-muted hover:text-clay"
+            disabled={disabled}
+            className="font-mono text-[11px] uppercase tracking-wider text-muted hover:text-clay disabled:opacity-50"
           >
             Skip for now
           </button>
@@ -73,31 +99,39 @@ export function PartnerStep({
               value={contact}
               onChange={(e) => setContact(e.target.value)}
               placeholder="Email or phone number"
-              className="flex-1 rounded-card border border-line bg-sunken px-3 py-2 text-fg outline-none focus:border-teal"
+              disabled={disabled}
+              className="flex-1 rounded-card border border-line bg-sunken px-3 py-2 text-fg outline-none focus:border-teal disabled:opacity-60"
             />
             <button
               type="button"
               onClick={send}
-              disabled={busy || !contact.trim()}
+              disabled={disabled || !contact.trim()}
               className="rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {busy ? "Sending…" : "Send invite"}
             </button>
           </div>
 
-          {result?.error && <p className="text-sm text-clay">{result.error}</p>}
-          {result?.ok && (
-            <p className="text-sm text-teal">
-              {result.matched
-                ? "Found their account — invite sent. They'll see it next time they sign in."
-                : "No account yet — share this link so they can create one and accept:"}
-              {!result.matched && result.inviteUrl && (
-                <span className="mt-1 block break-all font-mono text-xs text-fg">
-                  {typeof window !== "undefined" ? window.location.origin : ""}
-                  {result.inviteUrl}
+          {sent && (
+            <div className="rounded-card border border-teal/40 bg-teal/10 px-3 py-2.5 text-sm">
+              {sent.matched ? (
+                <span className="text-fg">
+                  Found their account — the invite is waiting for them next time
+                  they sign in.
                 </span>
+              ) : (
+                <>
+                  <span className="text-fg">
+                    No account yet — send them this link and they can create one,
+                    then accept or decline:
+                  </span>
+                  <span className="mt-1 block break-all font-mono text-xs text-teal">
+                    {origin}
+                    {sent.url}
+                  </span>
+                </>
               )}
-            </p>
+            </div>
           )}
 
           {pending.length > 0 && (
@@ -114,8 +148,9 @@ export function PartnerStep({
                     </span>
                     <button
                       type="button"
-                      onClick={() => cancelInvite(inv.id)}
-                      className="font-mono text-[10px] uppercase tracking-wider text-muted hover:text-clay"
+                      disabled={disabled}
+                      onClick={() => cancel(inv.id)}
+                      className="font-mono text-[10px] uppercase tracking-wider text-muted hover:text-clay disabled:opacity-50"
                     >
                       Cancel
                     </button>
@@ -125,21 +160,29 @@ export function PartnerStep({
             </ul>
           )}
 
-          <div className="flex items-center gap-4 border-t border-line pt-4">
+          <div className="flex flex-wrap items-center gap-4 border-t border-line pt-4">
             <button
               type="button"
+              disabled={disabled}
               onClick={() => onAnswer(true)}
-              className="rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90"
+              className="rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               Continue
             </button>
             <button
               type="button"
+              disabled={disabled}
               onClick={() => setChoice(null)}
-              className="font-mono text-[11px] uppercase tracking-wider text-muted hover:text-teal"
+              className="font-mono text-[11px] uppercase tracking-wider text-muted hover:text-teal disabled:opacity-50"
             >
               Back
             </button>
+            {!hasInvite && (
+              <span className="text-xs text-muted">
+                No invite sent yet — that&apos;s fine, you can add them later from
+                this page.
+              </span>
+            )}
           </div>
         </div>
       )}

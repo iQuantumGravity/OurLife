@@ -6,11 +6,20 @@ import type { OnboardingAnswers, OnboardingMode } from "@/lib/onboarding/schema"
 import { deriveStage, overallProgress } from "@/lib/onboarding/progress";
 import type { Step } from "@/lib/onboarding/steps";
 import type { InviteRow } from "@/lib/onboarding/data";
-import { saveStep, skipField, setMode, completeTrack, markComparisonViewed } from "./actions";
+import {
+  saveStep,
+  skipStep,
+  setMode,
+  completeTrack,
+  markComparisonViewed,
+  waivePartnerWait,
+} from "./actions";
 import { PartnerStep } from "./PartnerStep";
 import { GoalsStep } from "./GoalsStep";
 import { DebtStep } from "./DebtStep";
 import { Comparison } from "./Comparison";
+
+type ActionResult = { ok?: true; error?: string } | undefined;
 
 interface Props {
   mode: OnboardingMode;
@@ -18,7 +27,7 @@ interface Props {
   answers: OnboardingAnswers;
   partnerAnswers: OnboardingAnswers | null;
   partnerName: string | null;
-  comparisonViewed: boolean;
+  partnerExists: boolean;
   hasPlaidConnection: boolean;
   hasDocument: boolean;
   invites: InviteRow[];
@@ -27,39 +36,52 @@ interface Props {
 export function Wizard(props: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const extra = {
     stateExists: props.stateExists,
     hasPlaidConnection: props.hasPlaidConnection,
     hasDocument: props.hasDocument,
   };
-  const stage = deriveStage(
+  const stage = deriveStage({
+    answers: props.answers,
+    mode: props.mode,
+    extra,
+    partnerExists: props.partnerExists,
+    partnerLifeDone: Boolean(props.partnerAnswers?.lifeTrackCompletedAt),
+  });
+  const progress = overallProgress(
     props.answers,
     props.mode,
     extra,
-    Boolean(props.partnerAnswers?.lifeTrackCompletedAt),
-    props.comparisonViewed,
+    props.partnerExists,
   );
-  const progress = overallProgress(props.answers, props.mode, extra, props.comparisonViewed);
+  const locked = busy || pending;
 
-  function refresh() {
-    startTransition(() => router.refresh());
+  /** Runs an action, surfaces its error, and only refreshes on success. */
+  async function run(fn: () => Promise<ActionResult>) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fn();
+      if (res?.error) {
+        setError(res.error);
+        return false;
+      }
+      startTransition(() => router.refresh());
+      return true;
+    } catch {
+      setError("Something went wrong saving that. Try again?");
+      return false;
+    } finally {
+      setBusy(false);
+    }
   }
 
-  async function handleModeSelect(m: OnboardingMode) {
-    await setMode(m);
-    refresh();
-  }
-
-  async function handleSave(field: keyof OnboardingAnswers, value: unknown) {
-    await saveStep({ [field]: value } as any);
-    refresh();
-  }
-
-  async function handleSkip(stepId: string) {
-    await skipField(stepId);
-    refresh();
-  }
+  const pct = progress.total
+    ? Math.round((progress.done / progress.total) * 100)
+    : 0;
 
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-8">
@@ -67,35 +89,50 @@ export function Wizard(props: Props) {
         <div className="font-mono text-xs uppercase tracking-[0.14em] text-muted">
           Onboarding
         </div>
-        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-sunken">
+        <div
+          className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-sunken"
+          role="progressbar"
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
           <div
             className="h-full rounded-full bg-teal transition-all"
-            style={{
-              width: `${progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%`,
-            }}
+            style={{ width: `${pct}%` }}
           />
         </div>
         <p className="mt-2 font-mono text-[11px] uppercase tracking-wider text-muted">
-          {progress.done} of {progress.total} · always skippable, never blocks connecting a bank or uploading a statement
+          {progress.done} of {progress.total} · skip anything, come back anytime
         </p>
       </header>
 
-      <div className={pending ? "opacity-60 transition-opacity" : "transition-opacity"}>
+      {error && (
+        <p className="rounded-card border border-clay/40 bg-clay/10 px-4 py-3 text-sm text-clay">
+          {error}
+        </p>
+      )}
+
+      <div className={locked ? "opacity-60 transition-opacity" : "transition-opacity"}>
         {stage.kind === "mode_select" && (
-          <StepShell title="How should we set this up?" subtitle="Planning solo, or with someone? You can add a partner later too.">
+          <StepShell
+            title="How should we set this up?"
+            subtitle="Planning solo, or with someone? You can change this later — nothing here is permanent."
+          >
             <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 type="button"
-                onClick={() => handleModeSelect("individual")}
-                className="flex-1 rounded-card border border-line bg-raised px-4 py-3 text-left transition hover:border-teal"
+                disabled={locked}
+                onClick={() => run(() => setMode("individual"))}
+                className="flex-1 rounded-card border border-line bg-sunken px-4 py-3 text-left transition hover:border-teal disabled:opacity-50"
               >
                 <div className="font-medium text-fg">Just me</div>
                 <div className="mt-1 text-sm text-muted">Plan on your own for now.</div>
               </button>
               <button
                 type="button"
-                onClick={() => handleModeSelect("couple")}
-                className="flex-1 rounded-card border border-line bg-raised px-4 py-3 text-left transition hover:border-teal"
+                disabled={locked}
+                onClick={() => run(() => setMode("couple"))}
+                className="flex-1 rounded-card border border-line bg-sunken px-4 py-3 text-left transition hover:border-teal disabled:opacity-50"
               >
                 <div className="font-medium text-fg">Me &amp; a partner</div>
                 <div className="mt-1 text-sm text-muted">Plan together, side by side.</div>
@@ -110,35 +147,58 @@ export function Wizard(props: Props) {
             step={stage.step}
             answers={props.answers}
             invites={props.invites}
-            onSave={handleSave}
-            onSkip={handleSkip}
-            onAdvance={refresh}
+            locked={locked}
+            onSave={(field, value) => run(() => saveStep({ [field]: value } as any))}
+            onSkip={(stepId) => run(() => skipStep(stepId))}
+            onError={setError}
           />
         )}
 
         {stage.kind === "life_complete" && (
-          <StepShell title="That's the Life track done." subtitle="Nice. Now let's get the money side of the picture.">
-            <ContinueButton
-              onClick={async () => {
-                await completeTrack("life");
-                refresh();
-              }}
-            />
+          <StepShell
+            title="That's the Life track done."
+            subtitle="Nice. Now the money side of the picture — or come back to it whenever."
+          >
+            <button
+              type="button"
+              disabled={locked}
+              onClick={() => run(() => completeTrack("life"))}
+              className="rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              Continue
+            </button>
           </StepShell>
         )}
 
         {stage.kind === "waiting_on_partner" && (
           <StepShell
             title={`Waiting on ${props.partnerName ?? "your partner"}.`}
-            subtitle="Once they've finished their Life track, you'll both see how your answers compare. Feel free to come back later — nothing here is blocking you from connecting a bank account or uploading a statement in the meantime."
+            subtitle="Once they've finished their Life track you'll both see how your answers compare. No rush — and you don't have to wait if you'd rather keep going."
           >
-            <button
-              type="button"
-              onClick={refresh}
-              className="rounded-card border border-line px-4 py-2.5 font-mono text-xs uppercase tracking-wider text-muted hover:border-teal hover:text-teal"
-            >
-              Check again
-            </button>
+            <div className="flex flex-wrap items-center gap-4">
+              <button
+                type="button"
+                disabled={locked}
+                onClick={() => startTransition(() => router.refresh())}
+                className="rounded-card border border-line px-4 py-2.5 font-mono text-xs uppercase tracking-wider text-muted hover:border-teal hover:text-teal disabled:opacity-50"
+              >
+                Check again
+              </button>
+              <button
+                type="button"
+                disabled={locked}
+                onClick={() => run(() => waivePartnerWait())}
+                className="rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                Go on without them
+              </button>
+            </div>
+            <p className="mt-4 text-xs text-muted">
+              Linking a bank account and uploading statements are never blocked by
+              this — you can do both right now from{" "}
+              <a href="/accounts" className="text-teal hover:underline">Accounts</a> or{" "}
+              <a href="/uploads" className="text-teal hover:underline">Statements</a>.
+            </p>
           </StepShell>
         )}
 
@@ -147,26 +207,32 @@ export function Wizard(props: Props) {
             mine={props.answers}
             partner={props.partnerAnswers}
             partnerName={props.partnerName}
-            onContinue={async () => {
-              await markComparisonViewed();
-              refresh();
-            }}
+            disabled={locked}
+            onContinue={() => run(() => markComparisonViewed())}
           />
         )}
 
         {stage.kind === "money_complete" && (
-          <StepShell title="Money track done too." subtitle="That's everything — your plan now reflects the two of you.">
-            <ContinueButton
-              onClick={async () => {
-                await completeTrack("money");
-                refresh();
-              }}
-            />
+          <StepShell
+            title="Money track done too."
+            subtitle="That's everything — your plan now reflects the two of you."
+          >
+            <button
+              type="button"
+              disabled={locked}
+              onClick={() => run(() => completeTrack("money"))}
+              className="rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              Continue
+            </button>
           </StepShell>
         )}
 
         {stage.kind === "done" && (
-          <StepShell title="You're all set." subtitle="Head to your dashboard to see it come together. You can revisit any of this anytime.">
+          <StepShell
+            title="You're all set."
+            subtitle="Head to your dashboard to see it come together. You can revisit any of this anytime."
+          >
             <a
               href="/dashboard"
               className="inline-block rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90"
@@ -176,6 +242,23 @@ export function Wizard(props: Props) {
           </StepShell>
         )}
       </div>
+
+      {/* Mode is changeable after the fact, so an early mis-click is never a trap. */}
+      {stage.kind !== "mode_select" && (
+        <p className="text-xs text-muted">
+          {props.mode === "couple" ? "Planning as a couple." : "Planning solo."}{" "}
+          <button
+            type="button"
+            disabled={locked}
+            onClick={() =>
+              run(() => setMode(props.mode === "couple" ? "individual" : "couple"))
+            }
+            className="text-teal hover:underline disabled:opacity-50"
+          >
+            {props.mode === "couple" ? "Switch to just me" : "Switch to me & a partner"}
+          </button>
+        </p>
+      )}
     </div>
   );
 }
@@ -198,46 +281,37 @@ function StepShell({
   );
 }
 
-function ContinueButton({ onClick, label = "Continue" }: { onClick: () => void; label?: string }) {
+function SkipLink({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90"
-    >
-      {label}
-    </button>
-  );
-}
-
-function SkipLink({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="font-mono text-[11px] uppercase tracking-wider text-muted hover:text-clay"
+      disabled={disabled}
+      className="font-mono text-[11px] uppercase tracking-wider text-muted hover:text-clay disabled:opacity-50"
     >
       Skip for now
     </button>
   );
 }
 
-// --- generic + custom step renderer -----------------------------------------
+// --- step renderer -----------------------------------------------------------
 
 function StepRenderer({
   step,
   answers,
   invites,
+  locked,
   onSave,
   onSkip,
-  onAdvance,
+  onError,
 }: {
   step: Step;
   answers: OnboardingAnswers;
   invites: InviteRow[];
-  onSave: (field: keyof OnboardingAnswers, value: unknown) => Promise<void>;
-  onSkip: (stepId: string) => Promise<void>;
-  onAdvance: () => void;
+  locked: boolean;
+  onSave: (field: keyof OnboardingAnswers, value: unknown) => Promise<boolean>;
+  onSkip: (stepId: string) => Promise<boolean>;
+  onError: (msg: string | null) => void;
 }) {
   if (step.kind === "partner") {
     return (
@@ -245,8 +319,10 @@ function StepRenderer({
         step={step}
         hasPartner={answers.hasPartner}
         invites={invites}
-        onAnswer={async (v) => onSave("hasPartner", v)}
+        locked={locked}
+        onAnswer={(v) => onSave("hasPartner", v)}
         onSkip={() => onSkip(step.id)}
+        onError={onError}
       />
     );
   }
@@ -255,7 +331,8 @@ function StepRenderer({
       <GoalsStep
         step={step}
         goals={answers.topGoals}
-        onSave={async (goals) => onSave("topGoals", goals)}
+        locked={locked}
+        onSave={(goals) => onSave("topGoals", goals)}
         onSkip={() => onSkip(step.id)}
       />
     );
@@ -265,64 +342,65 @@ function StepRenderer({
       <DebtStep
         step={step}
         debts={answers.existingDebt}
-        onSave={async (debts) => onSave("existingDebt", debts)}
+        locked={locked}
+        onSave={(debts) => onSave("existingDebt", debts)}
         onSkip={() => onSkip(step.id)}
       />
     );
   }
-  if (step.kind === "plaid_cta") {
+  if (step.kind === "plaid_cta" || step.kind === "upload_cta") {
+    const isPlaid = step.kind === "plaid_cta";
     return (
       <StepShell title={step.title} subtitle={step.subtitle}>
         <div className="flex flex-wrap items-center gap-4">
           <a
-            href="/accounts"
+            href={isPlaid ? "/accounts" : "/uploads"}
             className="rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90"
           >
-            Go connect a bank
+            {isPlaid ? "Go connect a bank" : "Go upload something"}
           </a>
-          <SkipLink onClick={() => onSkip(step.id)} />
-        </div>
-      </StepShell>
-    );
-  }
-  if (step.kind === "upload_cta") {
-    return (
-      <StepShell title={step.title} subtitle={step.subtitle}>
-        <div className="flex flex-wrap items-center gap-4">
-          <a
-            href="/uploads"
-            className="rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90"
-          >
-            Go upload something
-          </a>
-          <SkipLink onClick={() => onSkip(step.id)} />
+          <SkipLink onClick={() => onSkip(step.id)} disabled={locked} />
         </div>
       </StepShell>
     );
   }
 
-  // yesno / select / text / textarea / number
-  const genericStep = step as Extract<Step, { kind: "yesno" | "select" | "text" | "textarea" | "number" }>;
+  const generic = step as Extract<
+    Step,
+    { kind: "yesno" | "select" | "text" | "textarea" | "number" }
+  >;
   return (
     <GenericField
-      step={genericStep}
-      value={(answers as any)[genericStep.field]}
-      onSave={(v) => onSave(genericStep.field, v)}
-      onSkip={() => onSkip(genericStep.id)}
+      step={generic}
+      value={(answers as any)[generic.field]}
+      locked={locked}
+      onSave={(v) => onSave(generic.field, v)}
+      onSkip={() => onSkip(generic.id)}
     />
   );
 }
 
+// Bounds mirror the Zod schema so the common mistakes are caught in the browser
+// rather than coming back as a server-side validation error.
+const NUMBER_BOUNDS: Record<string, { min: number; max: number; step?: number }> = {
+  kidsCount: { min: 0, max: 20, step: 1 },
+  kidsTimelineYears: { min: 0, max: 40, step: 1 },
+  retirementAge: { min: 30, max: 90, step: 1 },
+  currentSavings: { min: 0, max: 1_000_000_000, step: 1 },
+};
+
 function GenericField({
   step,
   value,
+  locked,
   onSave,
   onSkip,
 }: {
   step: Extract<Step, { kind: "yesno" | "select" | "text" | "textarea" | "number" }>;
   value: unknown;
-  onSave: (value: unknown) => Promise<void>;
-  onSkip: () => Promise<void>;
+  locked: boolean;
+  onSave: (value: unknown) => Promise<boolean>;
+  onSkip: () => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState<string>(
     value === null || value === undefined ? "" : String(value),
@@ -334,19 +412,21 @@ function GenericField({
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
+            disabled={locked}
             onClick={() => onSave(true)}
-            className="rounded-card border border-line bg-sunken px-4 py-2.5 font-medium text-fg transition hover:border-teal"
+            className="rounded-card border border-line bg-sunken px-4 py-2.5 font-medium text-fg transition hover:border-teal disabled:opacity-50"
           >
             {step.yesLabel}
           </button>
           <button
             type="button"
+            disabled={locked}
             onClick={() => onSave(false)}
-            className="rounded-card border border-line bg-sunken px-4 py-2.5 font-medium text-fg transition hover:border-teal"
+            className="rounded-card border border-line bg-sunken px-4 py-2.5 font-medium text-fg transition hover:border-teal disabled:opacity-50"
           >
             {step.noLabel}
           </button>
-          <SkipLink onClick={onSkip} />
+          <SkipLink onClick={onSkip} disabled={locked} />
         </div>
       </StepShell>
     );
@@ -361,21 +441,23 @@ function GenericField({
               <button
                 key={opt.value}
                 type="button"
+                disabled={locked}
                 onClick={() => onSave(opt.value)}
-                className="rounded-full border border-line px-4 py-2 text-sm text-fg transition hover:border-teal hover:text-teal"
+                className="rounded-full border border-line px-4 py-2 text-sm text-fg transition hover:border-teal hover:text-teal disabled:opacity-50"
               >
                 {opt.label}
               </button>
             ))}
           </div>
-          <SkipLink onClick={onSkip} />
+          <SkipLink onClick={onSkip} disabled={locked} />
         </div>
       </StepShell>
     );
   }
 
   const isTextarea = step.kind === "textarea";
-  const inputType = step.kind === "number" ? "number" : "text";
+  const isEmpty = draft.trim() === "";
+  const bounds = NUMBER_BOUNDS[step.field as string];
 
   return (
     <StepShell title={step.title} subtitle={step.subtitle}>
@@ -383,8 +465,13 @@ function GenericField({
         className="flex flex-col gap-3"
         onSubmit={(e) => {
           e.preventDefault();
-          const v = step.kind === "number" ? (draft === "" ? null : Number(draft)) : draft || null;
-          onSave(v);
+          // An empty submit means "no answer" — treat it as an explicit skip so
+          // the button always does something rather than silently re-rendering.
+          if (isEmpty) {
+            onSkip();
+            return;
+          }
+          onSave(step.kind === "number" ? Number(draft) : draft);
         }}
       >
         {isTextarea ? (
@@ -393,25 +480,34 @@ function GenericField({
             onChange={(e) => setDraft(e.target.value)}
             placeholder={step.placeholder}
             rows={5}
-            className="rounded-card border border-line bg-sunken px-3 py-2 text-fg outline-none focus:border-teal"
+            maxLength={2000}
+            disabled={locked}
+            className="rounded-card border border-line bg-sunken px-3 py-2 text-fg outline-none focus:border-teal disabled:opacity-60"
           />
         ) : (
           <input
-            type={inputType}
+            type={step.kind === "number" ? "number" : "text"}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={step.placeholder}
-            className="rounded-card border border-line bg-sunken px-3 py-2 text-fg outline-none focus:border-teal"
+            disabled={locked}
+            inputMode={step.kind === "number" ? "numeric" : undefined}
+            min={bounds?.min}
+            max={bounds?.max}
+            step={bounds?.step}
+            maxLength={step.kind === "number" ? undefined : 120}
+            className="rounded-card border border-line bg-sunken px-3 py-2 text-fg outline-none focus:border-teal disabled:opacity-60"
           />
         )}
         <div className="flex items-center gap-4">
           <button
             type="submit"
-            className="rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90"
+            disabled={locked}
+            className="rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            Continue
+            {isEmpty ? "Skip this one" : "Continue"}
           </button>
-          <SkipLink onClick={onSkip} />
+          {!isEmpty && <SkipLink onClick={onSkip} disabled={locked} />}
         </div>
       </form>
     </StepShell>

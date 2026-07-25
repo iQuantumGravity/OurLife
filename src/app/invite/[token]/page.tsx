@@ -28,22 +28,12 @@ export default async function InvitePage({
         {!invite ? (
           <>
             <h1 className="font-display text-2xl font-semibold">
-              This invite link isn't valid.
+              This invite isn&apos;t active.
             </h1>
             <p className="mt-2 text-sm text-muted">
-              It may have been cancelled, or the link is mistyped. Ask
-              whoever sent it to send a fresh one.
-            </p>
-          </>
-        ) : invite.status !== "pending" ? (
-          <>
-            <h1 className="font-display text-2xl font-semibold">
-              {invite.status === "accepted"
-                ? "This invite has already been accepted."
-                : "This invite was already declined."}
-            </h1>
-            <p className="mt-2 text-sm text-muted">
-              Nothing more to do here.
+              It may have already been answered, expired, or been cancelled —
+              invites are good for seven days. Ask whoever sent it for a fresh
+              one and it&apos;ll work straight away.
             </p>
           </>
         ) : (
