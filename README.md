@@ -18,6 +18,9 @@ and **Tailwind**, deployable on **Vercel**.
   how you're tracking vs. the plan.
 - **Statement uploads** — bank / credit-card statements to a private,
   per-household storage bucket, with signed-link viewing.
+- **Bank connections (Plaid)** — link a bank (SoFi and most US institutions)
+  and sync transactions in automatically, instead of uploading statements by
+  hand. Optional — hidden until Plaid keys are set.
 
 Your real numbers never live in this repo — they live in your private Supabase
 database. The committed baseline is a clearly-labeled sample template.
@@ -36,20 +39,24 @@ Without Supabase keys the app still runs — it shows the sample plan and a
 ## Connect Supabase
 
 1. Create a Supabase project (or reuse one).
-2. Apply the schema in [`supabase/migrations/0001_init.sql`](./supabase/migrations/0001_init.sql)
-   (via the Supabase MCP `apply_migration` tool or `supabase db push`).
-3. Copy your Project URL + anon key from **Project Settings → API** into
-   `.env.local`.
+2. Apply the schema in [`supabase/migrations/`](./supabase/migrations/), in
+   order (`0001_init.sql`, `0002_living_layer.sql`, `0003_plaid.sql`), via the
+   Supabase MCP `apply_migration` tool or `supabase db push`.
+3. Copy your Project URL + anon key (and, for Plaid, the service_role key)
+   from **Project Settings → API** into `.env.local`.
 4. In **Authentication → URL Configuration**, add `http://localhost:3000` and
    your Vercel domain to the redirect allow-list.
 
-See [`supabase/README.md`](./supabase/README.md) for schema details.
+See [`supabase/README.md`](./supabase/README.md) for schema details, and the
+same file for the optional Plaid setup steps.
 
 ## Deploy to Vercel
 
 1. Import this repo in Vercel.
 2. Add `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and
-   `NEXT_PUBLIC_SITE_URL` (your production URL) as environment variables.
+   `NEXT_PUBLIC_SITE_URL` (your production URL) as environment variables —
+   plus `SUPABASE_SERVICE_ROLE_KEY`, `PLAID_CLIENT_ID`, `PLAID_SECRET`, and
+   `PLAID_ENV` if you're using bank connections.
 3. Deploy. Add the production domain to Supabase's auth redirect allow-list.
 
 ## Roadmap (next builds)
@@ -104,12 +111,14 @@ Note: this uses the Anthropic **API** (metered, billed per token). A Claude.ai s
 - `POST /api/assistant` — `{ message, threadId? }` → runs the tool loop, persists the exchange, returns `{ reply, threadId, actions }`.
 - `POST /api/documents/[id]/parse` — extracts one uploaded document into the model.
 
-Both run as the signed-in user, so row-level security is what keeps a household's numbers private. There is no service-role key anywhere in this app.
+Both run as the signed-in user, so row-level security is what keeps a household's numbers private — the assistant itself uses no service-role key. (The separate Plaid integration below does use one, scoped to its own `plaid_items` table; see [`supabase/README.md`](./supabase/README.md).)
 
 ## Schema
 
 - `0001_init.sql` — households, members, baseline, pay stubs, document metadata, private storage bucket.
 - `0002_living_layer.sql` — document parsing state, `document_line_items`, `chat_threads` / `chat_messages`, `plan_events` (the journal), `scenarios`.
+- `0003_plaid.sql` — `plaid_items`, `transactions` (bank-account connections and synced transaction data).
+
 ## Google sign-in
 
 The login page shows a "Continue with Google" button beside the email/password form.

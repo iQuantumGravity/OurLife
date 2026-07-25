@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseConfigured } from "@/lib/config";
 import { SAMPLE_BASELINE } from "@/lib/model/sample-baseline";
 import type { Baseline, PayStub } from "@/lib/model/types";
@@ -112,4 +113,48 @@ export async function getDocuments(
     .eq("household_id", householdId)
     .order("created_at", { ascending: false });
   return (data ?? []) as DocumentRow[];
+}
+
+export interface PlaidConnection {
+  id: string;
+  institution_name: string | null;
+  created_at: string;
+}
+
+/** Linked Plaid bank connections. Uses the admin client — plaid_items has no
+ * RLS policies for regular users, since it holds live bank access tokens. */
+export async function getPlaidConnections(
+  householdId: string,
+): Promise<PlaidConnection[]> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("plaid_items")
+    .select("id, institution_name, created_at")
+    .eq("household_id", householdId)
+    .order("created_at", { ascending: false });
+  return (data ?? []) as PlaidConnection[];
+}
+
+export interface TransactionRow {
+  id: string;
+  name: string;
+  merchant_name: string | null;
+  amount: number;
+  date: string;
+  pending: boolean;
+  category: string | null;
+}
+
+export async function getTransactions(
+  householdId: string,
+  limit = 100,
+): Promise<TransactionRow[]> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("transactions")
+    .select("id, name, merchant_name, amount, date, pending, category")
+    .eq("household_id", householdId)
+    .order("date", { ascending: false })
+    .limit(limit);
+  return (data ?? []) as TransactionRow[];
 }
