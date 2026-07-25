@@ -2,7 +2,6 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseConfigured } from "@/lib/config";
-import { SAMPLE_BASELINE } from "@/lib/model/sample-baseline";
 import type { Baseline, PayStub } from "@/lib/model/types";
 
 export interface HouseholdContext {
@@ -65,8 +64,14 @@ export async function getContext(): Promise<HouseholdContext | null> {
   };
 }
 
-/** The household's plan baseline, falling back to the sample template. */
-export async function getBaseline(householdId: string): Promise<Baseline> {
+/**
+ * The household's real plan baseline, or null when nothing has been written
+ * yet. Deliberately does NOT fall back to a sample: showing a fictional plan
+ * as though it were yours makes every number on the dashboard a lie.
+ */
+export async function getBaseline(
+  householdId: string,
+): Promise<Baseline | null> {
   const supabase = createClient();
   const { data } = await supabase
     .from("household_baseline")
@@ -75,10 +80,8 @@ export async function getBaseline(householdId: string): Promise<Baseline> {
     .maybeSingle();
 
   const stored = data?.data as Partial<Baseline> | undefined;
-  if (stored && Object.keys(stored).length > 0) {
-    return { ...SAMPLE_BASELINE, ...stored, isSample: false } as Baseline;
-  }
-  return SAMPLE_BASELINE;
+  if (!stored || Object.keys(stored).length === 0) return null;
+  return stored as Baseline;
 }
 
 export async function getPayStubs(householdId: string): Promise<PayStub[]> {

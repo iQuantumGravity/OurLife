@@ -71,8 +71,6 @@ export interface Baseline {
   phases: Phase[];
   elevation: ElevationPoint[];
   income: IncomeYear[];
-  /** Marks this as the committed sample vs. a household's real, private data. */
-  isSample?: boolean;
 }
 
 // --- pay stubs (mirrors the pay_stubs table) -------------------------------

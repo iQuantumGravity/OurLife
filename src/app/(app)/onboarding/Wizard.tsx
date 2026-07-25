@@ -197,7 +197,7 @@ export function Wizard(props: Props) {
               Linking a bank account and uploading statements are never blocked by
               this — you can do both right now from{" "}
               <a href="/accounts" className="text-teal hover:underline">Accounts</a> or{" "}
-              <a href="/uploads" className="text-teal hover:underline">Statements</a>.
+              <a href="/records?tab=statements" className="text-teal hover:underline">Statements</a>.
             </p>
           </StepShell>
         )}
@@ -354,7 +354,7 @@ function StepRenderer({
       <StepShell title={step.title} subtitle={step.subtitle}>
         <div className="flex flex-wrap items-center gap-4">
           <a
-            href={isPlaid ? "/accounts" : "/uploads"}
+            href={isPlaid ? "/accounts" : "/records?tab=statements"}
             className="rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90"
           >
             {isPlaid ? "Go connect a bank" : "Go upload something"}
