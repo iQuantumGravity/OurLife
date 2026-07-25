@@ -43,8 +43,9 @@ Without Supabase keys the app still runs — it shows the sample plan and a
 
 1. Create a Supabase project (or reuse one).
 2. Apply the schema in [`supabase/migrations/`](./supabase/migrations/), in
-   order (`0001_init.sql` through `0004_onboarding.sql`), via the Supabase
-   MCP `apply_migration` tool or `supabase db push`.
+   order (`0001_init.sql` through `0006_lint_fixes.sql`), via the Supabase
+   MCP `apply_migration` tool or `supabase db push`. The in-app **Setup guide**
+   at `/setup` checks which ones have landed.
 3. Copy your Project URL + anon key (and, for Plaid, the service_role key)
    from **Project Settings → API** into `.env.local`.
 4. In **Authentication → URL Configuration**, add `http://localhost:3000` and
@@ -122,6 +123,8 @@ Both run as the signed-in user, so row-level security is what keeps a household'
 - `0002_living_layer.sql` — document parsing state, `document_line_items`, `chat_threads` / `chat_messages`, `plan_events` (the journal), `scenarios`.
 - `0003_plaid.sql` — `plaid_items`, `transactions` (bank-account connections and synced transaction data).
 - `0004_onboarding.sql` — `user_profiles`, `partner_invites`, `onboarding_state`, `onboarding_answers` (the Life/Money questionnaire and partner-invite flow).
+- `0005_harden_membership.sql` — closes a hole in 0001's `household_members` insert policy, adds a delete policy, and introduces `ourlife_schema_version()`.
+- `0006_lint_fixes.sql` — pins `search_path` on the two functions that were missing it.
 
 ## Google sign-in
 

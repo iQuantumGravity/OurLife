@@ -48,7 +48,7 @@ export default async function OnboardingPage() {
       answers={answers}
       partnerAnswers={partner?.answers ?? null}
       partnerName={partner?.displayName ?? null}
-      comparisonViewed={Boolean(state.comparisonViewedAt)}
+      partnerExists={partner !== null}
       hasPlaidConnection={connections.length > 0}
       hasDocument={documents.length > 0}
       invites={invites}

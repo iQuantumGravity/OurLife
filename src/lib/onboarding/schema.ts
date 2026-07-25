@@ -5,6 +5,14 @@ import { z } from "zod";
 // typed columns in supabase/migrations/0004_onboarding.sql 1:1, so a saved
 // answer round-trips cleanly between the wizard, the database, and whatever
 // in the planning engine consumes it later.
+//
+// IMPORTANT -- why the patch schema is built separately from the read schema:
+// in Zod 4, `.partial()` does NOT suppress `.default()`. Parsing `{ a: 1 }`
+// against a partial()'d schema whose other fields carry defaults returns those
+// defaults as concrete values, not `undefined`. Feeding that into an upsert
+// rewrites every column, wiping answers the user gave earlier. So the patch
+// schema below is built from DEFAULT-FREE field definitions, and only the read
+// schema applies defaults.
 // ===========================================================================
 
 export const OnboardingModeSchema = z.enum(["individual", "couple"]);
@@ -52,7 +60,7 @@ export const OnboardingGoalSchema = z.object({
   /** "YYYY-MM", optional -- some goals don't have a date yet. */
   targetDate: z.string().regex(/^\d{4}-\d{2}$/).nullable().optional(),
   targetAmount: z.number().nonnegative().nullable().optional(),
-  priority: z.number().int().min(1).max(5),
+  priority: z.number().int().min(1).max(10),
   note: z.string().max(280).optional(),
 });
 export type OnboardingGoal = z.infer<typeof OnboardingGoalSchema>;
@@ -72,47 +80,74 @@ export const DebtItemSchema = z.object({
 });
 export type DebtItem = z.infer<typeof DebtItemSchema>;
 
-// --- Life track -------------------------------------------------------------
-export const LifeTrackAnswersSchema = z.object({
-  relationshipStatus: RelationshipStatusSchema.nullable().default(null),
-  hasPartner: z.boolean().nullable().default(null),
-  married: z.boolean().nullable().default(null),
-  planToMarry: z.boolean().nullable().default(null),
-  marriageTimeline: z.string().max(120).nullable().default(null),
-  kidsStatus: KidsStatusSchema.nullable().default(null),
-  kidsCount: z.number().int().min(0).max(20).nullable().default(null),
-  kidsTimelineYears: z.number().int().min(0).max(40).nullable().default(null),
-  retirementAge: z.number().int().min(30).max(90).nullable().default(null),
-  location: z.string().max(120).nullable().default(null),
-  vision: z.string().max(2000).nullable().default(null),
-  topGoals: z.array(OnboardingGoalSchema).max(10).default([]),
-});
-export type LifeTrackAnswers = z.infer<typeof LifeTrackAnswersSchema>;
+// ---------------------------------------------------------------------------
+// Default-free field definitions. These bounds intentionally mirror the CHECK
+// constraints in 0004_onboarding.sql -- keep the two in step.
+// ---------------------------------------------------------------------------
+const FIELDS = {
+  // Life track
+  relationshipStatus: RelationshipStatusSchema.nullable(),
+  hasPartner: z.boolean().nullable(),
+  married: z.boolean().nullable(),
+  planToMarry: z.boolean().nullable(),
+  marriageTimeline: z.string().max(120).nullable(),
+  kidsStatus: KidsStatusSchema.nullable(),
+  kidsCount: z.number().int().min(0).max(20).nullable(),
+  kidsTimelineYears: z.number().int().min(0).max(40).nullable(),
+  retirementAge: z.number().int().min(30).max(90).nullable(),
+  location: z.string().max(120).nullable(),
+  vision: z.string().max(2000).nullable(),
+  topGoals: z.array(OnboardingGoalSchema).max(10),
 
-// --- Money track -------------------------------------------------------------
-export const MoneyTrackAnswersSchema = z.object({
-  incomeType: IncomeTypeSchema.nullable().default(null),
-  existingDebt: z.array(DebtItemSchema).max(20).default([]),
-  currentSavings: z.number().nonnegative().nullable().default(null),
-  riskTolerance: RiskToleranceSchema.nullable().default(null),
-});
-export type MoneyTrackAnswers = z.infer<typeof MoneyTrackAnswersSchema>;
+  // Money track
+  incomeType: IncomeTypeSchema.nullable(),
+  existingDebt: z.array(DebtItemSchema).max(20),
+  currentSavings: z.number().nonnegative().nullable(),
+  riskTolerance: RiskToleranceSchema.nullable(),
 
-// --- Combined, as stored (one row per household+user) -----------------------
-export const OnboardingAnswersSchema = LifeTrackAnswersSchema.merge(
-  MoneyTrackAnswersSchema,
-).extend({
-  /** Per-person progress -- each partner moves through Life independently. */
-  lifeTrackCompletedAt: z.string().nullable().default(null),
-  moneyTrackCompletedAt: z.string().nullable().default(null),
-  skippedFields: z.array(z.string()).default([]),
-  raw: z.record(z.string(), z.unknown()).default({}),
+  // Per-person progress
+  lifeTrackCompletedAt: z.string().nullable(),
+  moneyTrackCompletedAt: z.string().nullable(),
+  comparisonViewedAt: z.string().nullable(),
+  skippedFields: z.array(z.string()),
+  raw: z.record(z.string(), z.unknown()),
+} as const;
+
+/**
+ * Patch schema -- every field optional AND default-free, so `parse()` returns
+ * only the keys the caller actually supplied. Never add `.default()` here.
+ */
+export const OnboardingAnswersPatchSchema = z.object(FIELDS).partial();
+export type OnboardingAnswersPatch = z.infer<typeof OnboardingAnswersPatchSchema>;
+
+/** Read schema -- defaults applied so a missing column becomes a sane value. */
+export const OnboardingAnswersSchema = z.object({
+  relationshipStatus: FIELDS.relationshipStatus.default(null),
+  hasPartner: FIELDS.hasPartner.default(null),
+  married: FIELDS.married.default(null),
+  planToMarry: FIELDS.planToMarry.default(null),
+  marriageTimeline: FIELDS.marriageTimeline.default(null),
+  kidsStatus: FIELDS.kidsStatus.default(null),
+  kidsCount: FIELDS.kidsCount.default(null),
+  kidsTimelineYears: FIELDS.kidsTimelineYears.default(null),
+  retirementAge: FIELDS.retirementAge.default(null),
+  location: FIELDS.location.default(null),
+  vision: FIELDS.vision.default(null),
+  topGoals: FIELDS.topGoals.default([]),
+  incomeType: FIELDS.incomeType.default(null),
+  existingDebt: FIELDS.existingDebt.default([]),
+  currentSavings: FIELDS.currentSavings.default(null),
+  riskTolerance: FIELDS.riskTolerance.default(null),
+  lifeTrackCompletedAt: FIELDS.lifeTrackCompletedAt.default(null),
+  moneyTrackCompletedAt: FIELDS.moneyTrackCompletedAt.default(null),
+  comparisonViewedAt: FIELDS.comparisonViewedAt.default(null),
+  skippedFields: FIELDS.skippedFields.default([]),
+  raw: FIELDS.raw.default({}),
 });
 export type OnboardingAnswers = z.infer<typeof OnboardingAnswersSchema>;
 
-// Every field optional, for step-by-step partial saves.
-export const OnboardingAnswersPatchSchema = OnboardingAnswersSchema.partial();
-export type OnboardingAnswersPatch = z.infer<typeof OnboardingAnswersPatchSchema>;
+/** The full set of writable answer keys, used to bound what a patch may touch. */
+export const ANSWER_FIELD_KEYS = Object.keys(FIELDS) as (keyof OnboardingAnswersPatch)[];
 
 export const emptyOnboardingAnswers: OnboardingAnswers =
   OnboardingAnswersSchema.parse({});
@@ -120,7 +155,6 @@ export const emptyOnboardingAnswers: OnboardingAnswers =
 // --- Onboarding state (shared, household-level settings) --------------------
 export const OnboardingStateSchema = z.object({
   mode: OnboardingModeSchema.default("individual"),
-  comparisonViewedAt: z.string().nullable().default(null),
 });
 export type OnboardingState = z.infer<typeof OnboardingStateSchema>;
 
@@ -137,11 +171,3 @@ export type InviteContact = z.infer<typeof InviteContactSchema>;
 
 export const InviteResponseActionSchema = z.enum(["accept", "decline"]);
 export type InviteResponseAction = z.infer<typeof InviteResponseActionSchema>;
-
-// --- Fields the couple-mode comparison screen cares about --------------------
-export const COMPARABLE_FIELDS = [
-  "retirementAge",
-  "kidsStatus",
-  "kidsCount",
-  "riskTolerance",
-] as const;

@@ -24,18 +24,36 @@ bucket, namespaced by `{household_id}/…`, with matching storage policies.
 `plaid_items` and `transactions` (added in `migrations/0003_plaid.sql`) hold live
 bank-access tokens and the data synced with them; see the comments in that
 migration for why `plaid_items` has no policies at all.
-`migrations/0004_onboarding.sql` adds two `security definer` functions —
-`find_user_by_contact` and `respond_to_invite` — that centralize the
-sensitive parts of the invite flow (searching by email/phone, matching an
-invite to whoever's accepting it) instead of spreading that logic across RLS
-policies; see the comments in that migration for the reasoning.
+`migrations/0004_onboarding.sql` centralizes the sensitive parts of the invite
+flow in `security definer` functions rather than spreading them across RLS
+policies. Two details there are load-bearing and easy to undo by accident:
+
+- **`respond_to_invite`'s identity check must be NULL-safe.** Written the
+  obvious way — `if not (a or b or c) then raise` — it is an auth bypass: when
+  the invitee has no account yet, `invitee_user_id` is NULL, so the expression
+  is NULL, `not NULL` is NULL, and PL/pgSQL skips a NULL `IF`. The guard never
+  fires and *any* holder of the link joins the household. Every branch is
+  `coalesce(..., false)`-wrapped so it can only be true or false.
+- **`find_user_by_contact` is not granted to clients.** An RPC that answers
+  "does this email/phone have an account" is an enumeration oracle. Invites go
+  through `create_partner_invite`, which resolves the contact internally and
+  returns only a boolean.
+
+`migrations/0005_harden_membership.sql` closes a hole inherited from `0001`,
+whose `household_members` insert policy allowed `user_id = auth.uid()` with no
+constraint on `household_id` — meaning anyone who learned a household's uuid
+(they appear in client components and in every statements-bucket path) could
+add themselves to it and could never be removed, since there was no delete
+policy. It also adds `ourlife_schema_version()` so `/setup` can detect
+policy-only migrations that leave no table behind.
 
 ## Applying it
 
 **Option A — Supabase MCP (from this assistant):**
-apply `migrations/0001_init.sql`, `migrations/0002_living_layer.sql`,
-`migrations/0003_plaid.sql`, and `migrations/0004_onboarding.sql`, in order,
-with the `apply_migration` tool against your chosen project.
+apply every file in `migrations/` in numeric order (`0001_init.sql` through
+`0006_lint_fixes.sql`) with the `apply_migration` tool against your chosen
+project. `0004` onward are re-runnable; `0001`–`0003` are not (they use bare
+`create policy`, which has no `IF NOT EXISTS` in Postgres).
 
 **Option B — Supabase CLI:**
 ```bash

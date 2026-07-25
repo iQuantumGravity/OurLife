@@ -16,13 +16,15 @@ const TYPES: { value: DebtItem["type"]; label: string }[] = [
 export function DebtStep({
   step,
   debts,
+  locked,
   onSave,
   onSkip,
 }: {
   step: DebtStepConfig;
   debts: DebtItem[];
-  onSave: (debts: DebtItem[]) => Promise<void>;
-  onSkip: () => Promise<void>;
+  locked: boolean;
+  onSave: (debts: DebtItem[]) => Promise<boolean>;
+  onSkip: () => Promise<boolean>;
 }) {
   const [list, setList] = useState<DebtItem[]>(debts);
   const [type, setType] = useState<DebtItem["type"]>("credit_card");
@@ -95,7 +97,7 @@ export function DebtStep({
           <button
             type="button"
             onClick={add}
-            disabled={!balance}
+            disabled={locked || !balance || list.length >= 20}
             className="rounded-card border border-line px-4 py-2 font-medium text-fg transition hover:border-teal disabled:opacity-50"
           >
             Add
@@ -107,7 +109,7 @@ export function DebtStep({
         <button
           type="button"
           onClick={() => onSave(list)}
-          disabled={list.length === 0}
+          disabled={locked || list.length === 0}
           className="rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           Continue
@@ -115,7 +117,8 @@ export function DebtStep({
         <button
           type="button"
           onClick={onSkip}
-          className="font-mono text-[11px] uppercase tracking-wider text-muted hover:text-clay"
+          disabled={locked}
+          className="font-mono text-[11px] uppercase tracking-wider text-muted hover:text-clay disabled:opacity-50"
         >
           {list.length === 0 ? "No debt to add" : "Skip for now"}
         </button>

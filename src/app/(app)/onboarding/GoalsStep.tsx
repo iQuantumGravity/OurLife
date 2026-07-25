@@ -16,13 +16,15 @@ const CATEGORIES: { value: OnboardingGoal["type"]; label: string }[] = [
 export function GoalsStep({
   step,
   goals,
+  locked,
   onSave,
   onSkip,
 }: {
   step: GoalsStepConfig;
   goals: OnboardingGoal[];
-  onSave: (goals: OnboardingGoal[]) => Promise<void>;
-  onSkip: () => Promise<void>;
+  locked: boolean;
+  onSave: (goals: OnboardingGoal[]) => Promise<boolean>;
+  onSkip: () => Promise<boolean>;
 }) {
   const [list, setList] = useState<OnboardingGoal[]>(goals);
   const [type, setType] = useState<OnboardingGoal["type"]>("milestone");
@@ -113,7 +115,7 @@ export function GoalsStep({
           <button
             type="button"
             onClick={add}
-            disabled={!note.trim()}
+            disabled={locked || !note.trim() || list.length >= 10}
             className="rounded-card border border-line px-4 py-2 font-medium text-fg transition hover:border-teal disabled:opacity-50"
           >
             Add
@@ -125,7 +127,7 @@ export function GoalsStep({
         <button
           type="button"
           onClick={() => onSave(list)}
-          disabled={list.length === 0}
+          disabled={locked || list.length === 0}
           className="rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           Continue
@@ -133,7 +135,8 @@ export function GoalsStep({
         <button
           type="button"
           onClick={onSkip}
-          className="font-mono text-[11px] uppercase tracking-wider text-muted hover:text-clay"
+          disabled={locked}
+          className="font-mono text-[11px] uppercase tracking-wider text-muted hover:text-clay disabled:opacity-50"
         >
           Skip for now
         </button>

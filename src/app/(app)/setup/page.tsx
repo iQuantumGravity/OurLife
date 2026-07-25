@@ -30,19 +30,35 @@ async function tableExists(table: string): Promise<boolean> {
   }
 }
 
+/** Migrations that only change policies leave no table behind, so they report
+ *  themselves through a version marker function instead. */
+async function schemaVersion(): Promise<number> {
+  if (!isSupabaseConfigured) return 0;
+  try {
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("ourlife_schema_version");
+    if (error) return 0;
+    return typeof data === "number" ? data : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export default async function SetupPage() {
   const supabaseOk = isSupabaseConfigured;
   const plaidOk = isPlaidConfigured;
   const claudeOk = hasClaudeKey();
   const serviceRoleOk = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-  const [baselineTable, livingLayerTable, plaidTable, onboardingTable] =
+  const [baselineTable, livingLayerTable, plaidTable, onboardingTable, version] =
     await Promise.all([
       tableExists("household_baseline"),
       tableExists("chat_threads"),
       tableExists("plaid_items"),
       tableExists("onboarding_state"),
+      schemaVersion(),
     ]);
+  const membershipHardened = version >= 5;
 
   const checks: Check[] = [
     {
@@ -83,7 +99,15 @@ export default async function SetupPage() {
       detail: onboardingTable
         ? "Onboarding answers and partner invites are wired up."
         : "The onboarding wizard's tables aren't there yet.",
-      fix: "Apply supabase/migrations/0004_onboarding.sql last.",
+      fix: "Apply supabase/migrations/0004_onboarding.sql.",
+    },
+    {
+      label: "Membership hardening (0005_harden_membership.sql)",
+      status: !supabaseOk ? "unknown" : membershipHardened ? "ok" : "missing",
+      detail: membershipHardened
+        ? "Household membership is restricted to invites and bootstrap."
+        : "SECURITY: the 0001 insert policy still lets any signed-in user add themselves to any household given its id.",
+      fix: "Apply supabase/migrations/0005_harden_membership.sql — this one closes a real hole, not just a nice-to-have.",
     },
     {
       label: "Service-role key",
