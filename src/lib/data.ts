@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isSupabaseConfigured } from "@/lib/config";
+import { isSupabaseConfigured, isServiceRoleConfigured } from "@/lib/config";
 import type { Baseline, PayStub } from "@/lib/model/types";
 
 export interface HouseholdContext {
@@ -34,24 +34,19 @@ export async function getContext(): Promise<HouseholdContext | null> {
   let displayName = existing?.display_name as string | null | undefined;
 
   if (!householdId) {
-    const fallbackName = user.email?.split("@")[0] ?? null;
-    const { data: hh } = await supabase
-      .from("households")
-      .insert({ name: "Our household", created_by: user.id })
-      .select("id")
-      .single();
-    if (!hh) return null;
-    householdId = hh.id;
-    await supabase.from("household_members").insert({
-      household_id: hh.id,
-      user_id: user.id,
-      display_name: fallbackName,
+    // Bootstrap through a SECURITY DEFINER function rather than inserting here.
+    // Doing `insert(households).select("id").single()` from the client looks
+    // right but always fails: PostgREST turns .select() into RETURNING, and
+    // RETURNING is filtered by the SELECT policy `id in (user_household_ids())`
+    // — which the caller does not satisfy until the membership row exists on
+    // the next statement. The row got created and came back empty, so every
+    // signed-in user silently read as signed-out. See 0007_bootstrap_household.
+    const { data: newId, error } = await supabase.rpc("bootstrap_household", {
+      p_name: "Our household",
     });
-    await supabase.from("household_baseline").insert({
-      household_id: hh.id,
-      data: {},
-    });
-    displayName = fallbackName;
+    if (error || !newId) return null;
+    householdId = newId as string;
+    displayName = user.email?.split("@")[0] ?? null;
   }
 
   if (!householdId) return null;
@@ -125,17 +120,26 @@ export interface PlaidConnection {
 }
 
 /** Linked Plaid bank connections. Uses the admin client — plaid_items has no
- * RLS policies for regular users, since it holds live bank access tokens. */
+ * RLS policies for regular users, since it holds live bank access tokens.
+ *
+ * Returns [] when the service-role key isn't configured rather than throwing:
+ * a missing env var should degrade the bank-connection feature, not 500 every
+ * page that happens to show a connection count. */
 export async function getPlaidConnections(
   householdId: string,
 ): Promise<PlaidConnection[]> {
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("plaid_items")
-    .select("id, institution_name, created_at")
-    .eq("household_id", householdId)
-    .order("created_at", { ascending: false });
-  return (data ?? []) as PlaidConnection[];
+  if (!isServiceRoleConfigured) return [];
+  try {
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("plaid_items")
+      .select("id, institution_name, created_at")
+      .eq("household_id", householdId)
+      .order("created_at", { ascending: false });
+    return (data ?? []) as PlaidConnection[];
+  } catch {
+    return [];
+  }
 }
 
 export interface TransactionRow {

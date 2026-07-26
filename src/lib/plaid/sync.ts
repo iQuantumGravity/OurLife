@@ -1,11 +1,17 @@
 import "server-only";
 import { plaidClient } from "./client";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isServiceRoleConfigured } from "@/lib/config";
 
 // Pulls new/changed/removed transactions for every Plaid item linked to a
 // household, using Plaid's incremental `/transactions/sync` cursor so repeat
 // calls only fetch what's changed since the last sync.
 export async function syncHouseholdTransactions(householdId: string) {
+  if (!isServiceRoleConfigured) {
+    throw new Error(
+      "SUPABASE_SERVICE_ROLE_KEY is not set, so bank data can't be read or written.",
+    );
+  }
   const admin = createAdminClient();
   const { data: items } = await admin
     .from("plaid_items")
