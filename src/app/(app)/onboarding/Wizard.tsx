@@ -18,6 +18,8 @@ import { PartnerStep } from "./PartnerStep";
 import { GoalsStep } from "./GoalsStep";
 import { DebtStep } from "./DebtStep";
 import { Comparison } from "./Comparison";
+import { PlaidConnect } from "@/app/(app)/accounts/PlaidConnect";
+import { Uploader } from "@/app/(app)/records/Uploader";
 
 type ActionResult = { ok?: true; error?: string } | undefined;
 
@@ -28,6 +30,7 @@ interface Props {
   partnerAnswers: OnboardingAnswers | null;
   partnerName: string | null;
   partnerExists: boolean;
+  householdId: string;
   hasPlaidConnection: boolean;
   hasDocument: boolean;
   invites: InviteRow[];
@@ -147,6 +150,7 @@ export function Wizard(props: Props) {
             step={stage.step}
             answers={props.answers}
             invites={props.invites}
+            householdId={props.householdId}
             locked={locked}
             onSave={(field, value) => run(() => saveStep({ [field]: value } as any))}
             onSkip={(stepId) => run(() => skipStep(stepId))}
@@ -300,6 +304,7 @@ function StepRenderer({
   step,
   answers,
   invites,
+  householdId,
   locked,
   onSave,
   onSkip,
@@ -308,6 +313,7 @@ function StepRenderer({
   step: Step;
   answers: OnboardingAnswers;
   invites: InviteRow[];
+  householdId: string;
   locked: boolean;
   onSave: (field: keyof OnboardingAnswers, value: unknown) => Promise<boolean>;
   onSkip: (stepId: string) => Promise<boolean>;
@@ -348,18 +354,36 @@ function StepRenderer({
       />
     );
   }
-  if (step.kind === "plaid_cta" || step.kind === "upload_cta") {
-    const isPlaid = step.kind === "plaid_cta";
+  // Both of these used to be links that navigated away mid-wizard. If anything
+  // went wrong over there — a Plaid error, say — you were stranded off-flow with
+  // no way back to onboarding. They're inline now, so a failure is just a
+  // message on the step and "Skip for now" always gets you past it.
+  if (step.kind === "plaid_cta") {
     return (
       <StepShell title={step.title} subtitle={step.subtitle}>
-        <div className="flex flex-wrap items-center gap-4">
-          <a
-            href={isPlaid ? "/accounts" : "/records?tab=statements"}
-            className="rounded-card bg-teal px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90"
-          >
-            {isPlaid ? "Go connect a bank" : "Go upload something"}
-          </a>
+        <PlaidConnect />
+        <div className="mt-5 flex flex-wrap items-center gap-4 border-t border-line pt-4">
           <SkipLink onClick={() => onSkip(step.id)} disabled={locked} />
+          <span className="text-xs text-muted">
+            Optional — this never blocks the rest of setup.
+          </span>
+        </div>
+      </StepShell>
+    );
+  }
+  if (step.kind === "upload_cta") {
+    return (
+      <StepShell title={step.title} subtitle={step.subtitle}>
+        {householdId ? (
+          <Uploader householdId={householdId} />
+        ) : (
+          <p className="text-sm text-muted">Sign in to upload.</p>
+        )}
+        <div className="mt-5 flex flex-wrap items-center gap-4 border-t border-line pt-4">
+          <SkipLink onClick={() => onSkip(step.id)} disabled={locked} />
+          <span className="text-xs text-muted">
+            Optional — you can add statements any time from Records.
+          </span>
         </div>
       </StepShell>
     );

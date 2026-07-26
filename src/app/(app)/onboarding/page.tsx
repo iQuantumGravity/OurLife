@@ -49,6 +49,7 @@ export default async function OnboardingPage() {
       partnerAnswers={partner?.answers ?? null}
       partnerName={partner?.displayName ?? null}
       partnerExists={partner !== null}
+      householdId={ctx.householdId}
       hasPlaidConnection={connections.length > 0}
       hasDocument={documents.length > 0}
       invites={invites}

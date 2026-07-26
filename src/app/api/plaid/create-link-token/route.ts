@@ -3,6 +3,7 @@ import { CountryCode, Products } from "plaid";
 import { getContext } from "@/lib/data";
 import { plaidClient } from "@/lib/plaid/client";
 import { isPlaidConfigured } from "@/lib/config";
+import { describePlaidError } from "@/lib/plaid/errors";
 
 export async function POST() {
   if (!isPlaidConfigured) {
@@ -23,7 +24,20 @@ export async function POST() {
     });
     return NextResponse.json({ link_token: res.data.link_token });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "could not create link token";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const info = describePlaidError(err);
+    console.error("[plaid] linkTokenCreate failed", {
+      code: info.errorCode,
+      type: info.errorType,
+      status: info.status,
+      message: info.message,
+    });
+    return NextResponse.json(
+      {
+        error: info.message,
+        errorCode: info.errorCode,
+        hint: info.hint,
+      },
+      { status: info.status === 400 ? 400 : 502 },
+    );
   }
 }
