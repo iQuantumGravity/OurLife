@@ -32,7 +32,7 @@ export default async function PathPage() {
       ? buildLifePathFromGoals(
           projectGoals({
             goals,
-            monthlySurplus: surplus.monthlySurplus ?? 0,
+            monthlySurplus: surplus.monthlySurplus,
             liquidUnallocated: 0,
           }),
         )

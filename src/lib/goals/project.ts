@@ -19,6 +19,16 @@ export function monthsBetweenDates(a: Date, b: Date): number {
   return (b.getTime() - a.getTime()) / MS_MONTH;
 }
 
+/**
+ * Beyond this, a projected date stops being information. It is also well
+ * inside the range where Date arithmetic still works: JS dates top out around
+ * 3.28 million months from now, and `toISOString()` throws outright past that.
+ * A goal funded at a cent a month would sail past it and 500 every page that
+ * projects — including /goals itself, leaving no way to delete the goal that
+ * caused it.
+ */
+const MAX_PROJECTION_MONTHS = 1200; // a century
+
 function addMonths(from: Date, months: number): Date {
   const d = new Date(from);
   d.setMonth(d.getMonth() + Math.ceil(months));
@@ -31,8 +41,15 @@ function iso(d: Date): string {
 
 export interface ProjectionInput {
   goals: Goal[];
-  /** Real money available per month after everything else — can be negative. */
-  monthlySurplus: number;
+  /**
+   * Real money available per month after everything else. Negative when the
+   * household is overspending; NULL when there isn't enough logged to say.
+   *
+   * The distinction matters: null means "we don't know", zero means "nothing
+   * is going in". Collapsing null to 0 tells a household that has simply not
+   * logged a paycheck yet that all its goals are stalled.
+   */
+  monthlySurplus: number | null;
   /** Unallocated savings that can be applied to goals right now. */
   liquidUnallocated: number;
   now?: Date;
@@ -67,6 +84,23 @@ export function projectGoals({
   // Months consumed by everything ahead of this goal in the queue.
   let monthsConsumed = 0;
 
+  // A goal with its own monthly contribution funds itself alongside the queue
+  // — but that money comes out of the same surplus, so it has to leave the
+  // shared pot before anything else divides it. Without this the household
+  // commits £1,000/mo to retirement and the trip behind it is still projected
+  // as if the full £1,000 were available: the same pound funding two goals,
+  // which is the error the waterfall exists to prevent.
+  const committed = active.reduce(
+    (s, g) =>
+      s +
+      (g.monthlyContribution && g.monthlyContribution > 0
+        ? g.monthlyContribution
+        : 0),
+    0,
+  );
+  const queueSurplus =
+    monthlySurplus === null ? null : monthlySurplus - committed;
+
   const byId = new Map<string, GoalProgress>();
 
   for (const g of ordered) {
@@ -95,24 +129,39 @@ export function projectGoals({
     // How long this goal takes once it reaches the front of the queue. A goal
     // with its own monthly contribution funds itself in parallel; otherwise it
     // waits its turn on the shared surplus.
+    const hasOwnLine = Boolean(
+      g.monthlyContribution && g.monthlyContribution > 0,
+    );
+
     let monthsToFund: number | null = null;
+    // True when the goal will never be funded at the current rate, as opposed
+    // to merely having no date yet. The two must not render the same way.
+    let unfundable = false;
+
     if (remaining !== null && remaining <= 0) {
       monthsToFund = 0;
     } else if (remaining !== null) {
-      const rate =
-        g.monthlyContribution && g.monthlyContribution > 0
-          ? g.monthlyContribution
-          : monthlySurplus;
-      if (rate > 0) {
+      const rate: number | null = hasOwnLine
+        ? (g.monthlyContribution as number)
+        : queueSurplus;
+
+      if (rate !== null && rate > 0) {
         const own = remaining / rate;
-        monthsToFund =
-          g.monthlyContribution && g.monthlyContribution > 0
-            ? own // funded from its own line, no queueing
-            : monthsConsumed + own;
-        if (!(g.monthlyContribution && g.monthlyContribution > 0)) {
-          monthsConsumed += own;
+        // Funded from its own line, so it doesn't queue behind anything.
+        monthsToFund = hasOwnLine ? own : monthsConsumed + own;
+        if (!hasOwnLine) monthsConsumed += own;
+
+        if (monthsToFund > MAX_PROJECTION_MONTHS) {
+          monthsToFund = null;
+          unfundable = true;
         }
+      } else if (rate !== null) {
+        // Nothing is going in. Saying "no date" would read as "undated";
+        // this goal is standing still, and the UI has to be able to say so.
+        unfundable = true;
       }
+      // rate === null: the surplus isn't known yet. No projection, but no
+      // claim that the goal is stalled either.
     }
 
     const projected =
@@ -131,7 +180,10 @@ export function projectGoals({
       monthsToTarget: monthsToTarget === null ? null : Math.round(monthsToTarget),
       projectedDate: projected,
       slipMonths,
-      onTrack: slipMonths === null ? null : slipMonths <= 0,
+      unfundable,
+      // A goal nothing is going into is not "on track" for want of a date —
+      // it is definitively not on track.
+      onTrack: unfundable ? false : slipMonths === null ? null : slipMonths <= 0,
     });
   }
 
@@ -149,6 +201,7 @@ export function projectGoals({
       monthsToTarget: null,
       projectedDate: null,
       slipMonths: null,
+      unfundable: false,
       onTrack: null,
     });
   }

@@ -43,14 +43,29 @@ function monthKey(d: string): string {
   return d.slice(0, 7);
 }
 
+/**
+ * Both sides of the surplus are measured over this same window. Averaging
+ * all-time income against four months of spending compares two different
+ * households: someone who logged a few stubs from a job they left last year
+ * would show that old salary minus today's spending, and the UI would label
+ * the result "from linked banks".
+ */
+const WINDOW_DAYS = 120;
+
+/**
+ * Enough to cover a heavy spender's four months. The cap still has to be
+ * detected rather than trusted — see below.
+ */
+const ROW_CAP = 2000;
+
 export async function getSurplus(householdId: string): Promise<SurplusView> {
   const supabase = createClient();
 
   const since = new Date();
-  since.setDate(since.getDate() - 120);
+  since.setDate(since.getDate() - WINDOW_DAYS);
   const sinceIso = since.toISOString().slice(0, 10);
 
-  const [stubs, txRes, itemRes] = await Promise.all([
+  const [allStubs, txRes, itemRes] = await Promise.all([
     getPayStubs(householdId),
     supabase
       .from("transactions")
@@ -58,15 +73,18 @@ export async function getSurplus(householdId: string): Promise<SurplusView> {
       .eq("household_id", householdId)
       .gte("date", sinceIso)
       .order("date", { ascending: false })
-      .limit(500),
+      .limit(ROW_CAP),
     supabase
       .from("document_line_items")
       .select("id, description, merchant, amount, txn_date, category, direction")
       .eq("household_id", householdId)
       .gte("txn_date", sinceIso)
       .order("txn_date", { ascending: false })
-      .limit(500),
+      .limit(ROW_CAP),
   ]);
+
+  // getPayStubs has no date filter, so the window is applied here.
+  const stubs = allStubs.filter((s) => s.pay_date && s.pay_date >= sinceIso);
 
   const incomeMonths = stubsByMonth(stubs);
   const monthlyIncome =
@@ -83,8 +101,13 @@ export async function getSurplus(householdId: string): Promise<SurplusView> {
 
   let source: SpendingSource = "none";
   let rows: RecentSpend[] = [];
+  // Rows come back newest-first, so hitting the cap means the OLDEST month in
+  // the result is cut off partway through. Averaging it in understates spend
+  // and inflates the surplus, which makes every goal look closer than it is.
+  let capped = false;
 
   if (txs.length > 0) {
+    capped = txs.length >= ROW_CAP;
     source = "plaid";
     rows = txs
       // Plaid signs outgoings positive; money in is negative.
@@ -99,6 +122,7 @@ export async function getSurplus(householdId: string): Promise<SurplusView> {
       }));
   } else if (items.length > 0) {
     source = "documents";
+    capped = items.length >= ROW_CAP;
     rows = items
       .filter((i) => (i.direction ?? "debit") === "debit")
       .map((i) => ({
@@ -119,7 +143,15 @@ export async function getSurplus(householdId: string): Promise<SurplusView> {
   }
   // The current month is partial, so averaging it in understates spend.
   const nowKey = new Date().toISOString().slice(0, 7);
-  const completeMonths = [...spendByMonth.entries()].filter(([k]) => k !== nowKey);
+  // So is the oldest month when the row cap truncated the result.
+  const oldestKey =
+    capped && spendByMonth.size > 0
+      ? [...spendByMonth.keys()].sort()[0]
+      : null;
+
+  const completeMonths = [...spendByMonth.entries()].filter(
+    ([k]) => k !== nowKey && k !== oldestKey,
+  );
 
   const monthlySpend =
     completeMonths.length > 0

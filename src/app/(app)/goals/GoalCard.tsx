@@ -184,6 +184,16 @@ function TimingNote({ goal }: { goal: GoalProgress }) {
       </span>
     );
   }
+  // Checked before slipMonths: a goal receiving nothing has no projected date
+  // to be late against, so it would otherwise render as a blank — the same as
+  // a goal that simply hasn't been dated yet.
+  if (goal.unfundable) {
+    return (
+      <span className="font-mono text-[10px] uppercase tracking-wider text-clay">
+        nothing going in
+      </span>
+    );
+  }
   if (goal.slipMonths === null) {
     if (goal.projectedDate) {
       return (

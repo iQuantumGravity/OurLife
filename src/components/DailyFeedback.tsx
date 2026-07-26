@@ -17,8 +17,12 @@ export function DailyFeedback({
   goals: GoalProgress[];
 }) {
   const active = goals.filter((g) => g.status === "active");
+  // Goals nothing is going into have no projected date to be "late" against,
+  // so they'd fall through the slipping list into a reassurance they've
+  // earned least of all.
+  const stalled = active.filter((g) => g.unfundable).length;
   const slipping = active
-    .filter((g) => (g.slipMonths ?? 0) > 0)
+    .filter((g) => !g.unfundable && (g.slipMonths ?? 0) > 0)
     .sort((a, b) => (b.slipMonths ?? 0) - (a.slipMonths ?? 0))
     .slice(0, 3);
 
@@ -75,7 +79,10 @@ export function DailyFeedback({
                   : "not enough history"
               }
             />
+            {/* Three cells in a two-column grid leave a hole on phones, which
+                reads as a missing figure rather than an empty cell. */}
             <Cell
+              className="col-span-2 sm:col-span-1"
               label="Left over / mo"
               value={
                 surplus.monthlySurplus !== null
@@ -116,6 +123,14 @@ export function DailyFeedback({
                 ))}
               </ul>
             </div>
+          ) : stalled > 0 ? (
+            <p className="mt-4 rounded-card border border-clay/50 bg-clay/10 px-3 py-2 text-sm text-fg">
+              Nothing is going into{" "}
+              {stalled === active.length
+                ? "these goals"
+                : `${stalled} of these goals`}{" "}
+              at the moment — you&apos;re spending more than you bring in.
+            </p>
           ) : active.length > 0 && surplus.monthlySurplus !== null ? (
             <p className="mt-4 rounded-card border border-teal/40 bg-teal/10 px-3 py-2 text-sm text-fg">
               Everything with a date is still on track.
@@ -174,14 +189,16 @@ function Cell({
   value,
   sub,
   tone,
+  className,
 }: {
   label: string;
   value: string;
   sub?: string;
   tone?: "warn";
+  className?: string;
 }) {
   return (
-    <div className="bg-raised p-3">
+    <div className={"bg-raised p-3 " + (className ?? "")}>
       <div className="font-mono text-[10px] uppercase tracking-wider text-muted">
         {label}
       </div>

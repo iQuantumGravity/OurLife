@@ -121,6 +121,12 @@ export interface GoalProgress extends Goal {
    * This is the number that moves when you make an unplanned purchase.
    */
   slipMonths: number | null;
+  /**
+   * Nothing is going into this goal at the current rate, or it would take
+   * longer than a lifetime. Distinct from "no date yet": this one is standing
+   * still, and must never be reported as on track.
+   */
+  unfundable: boolean;
   onTrack: boolean | null;
 }
 

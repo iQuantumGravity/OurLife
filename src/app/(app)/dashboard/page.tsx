@@ -26,7 +26,7 @@ export default async function DashboardPage() {
   ]);
   const projected = projectGoals({
     goals,
-    monthlySurplus: surplus.monthlySurplus ?? 0,
+    monthlySurplus: surplus.monthlySurplus,
     liquidUnallocated: 0,
   });
 

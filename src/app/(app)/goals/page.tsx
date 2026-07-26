@@ -42,7 +42,7 @@ export default async function GoalsPage({
 
   const projected = projectGoals({
     goals,
-    monthlySurplus: surplus.monthlySurplus ?? 0,
+    monthlySurplus: surplus.monthlySurplus,
     liquidUnallocated: 0,
   });
 
@@ -64,7 +64,12 @@ export default async function GoalsPage({
     .filter((g) => g.goals.length > 0);
 
   const active = visible.filter((g) => g.status === "active");
-  const late = active.filter((g) => (g.slipMonths ?? 0) > 0).length;
+  // A goal nothing is going into counts as slipping. It is the worst case, not
+  // an absence of information.
+  const late = active.filter(
+    (g) => g.unfundable || (g.slipMonths ?? 0) > 0,
+  ).length;
+  const stalled = active.filter((g) => g.unfundable).length;
   const totalTarget = active.reduce((s, g) => s + (g.targetAmount ?? 0), 0);
   const totalSaved = active.reduce((s, g) => s + g.savedAmount, 0);
 
@@ -108,22 +113,40 @@ export default async function GoalsPage({
           }
         />
         {/* Without a surplus there is nothing to project from, so claiming
-            "all on time" would be a false reassurance rather than a fact. */}
+            "all on time" would be a false reassurance rather than a fact.
+            Nor is a negative surplus merely unknown: it means nothing is
+            being funded, which is the loudest thing this tile can say. */}
         <Tile
           label="Slipping"
           value={surplus.monthlySurplus === null ? "—" : String(late)}
           sub={
             surplus.monthlySurplus === null
               ? "can't tell yet"
-              : late > 0
-                ? "behind their date"
-                : "all on time"
+              : stalled > 0
+                ? "nothing going in"
+                : late > 0
+                  ? "behind their date"
+                  : "all on time"
           }
           tone={late > 0 ? "warn" : undefined}
         />
       </section>
 
       <ImportBanner names={pending.map((p) => p.name)} />
+
+      {surplus.monthlySurplus !== null && surplus.monthlySurplus < 0 && (
+        <section className="rounded-card border border-clay/50 bg-clay/10 p-4 text-sm">
+          <div className="font-medium text-fg">
+            You&apos;re spending {usd(Math.abs(surplus.monthlySurplus))} a month
+            more than you bring in.
+          </div>
+          <p className="mt-1 text-muted">
+            Nothing is going into these goals while that holds, so none of them
+            have a date — they aren&apos;t slipping, they&apos;re stopped. The
+            gap has to close before any timeline here means anything.
+          </p>
+        </section>
+      )}
 
       {surplus.monthlySurplus === null && (
         <section className="rounded-card border border-gold/40 bg-gold/10 p-4 text-sm">
