@@ -58,7 +58,8 @@ export function Nav({
 
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-sunken/95 backdrop-blur">
-      <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-3 sm:gap-4 sm:px-5">
+      <div className="mx-auto max-w-5xl px-4 py-2.5 sm:px-5 sm:py-3">
+       <div className="flex items-center gap-2 sm:gap-4">
         <Link
           href="/dashboard"
           className="shrink-0 font-display text-lg font-semibold"
@@ -66,10 +67,9 @@ export function Nav({
           OurLife
         </Link>
 
-        <nav
-          aria-label="Primary"
-          className="-mx-1 flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
+        {/* Desktop: links sit inline. On a phone there isn't room beside the
+            menu button, so they move to their own row below (see NavLinks). */}
+        <nav aria-label="Primary" className="hidden min-w-0 flex-1 items-center gap-0.5 sm:flex">
           {PRIMARY.map((l) => {
             const active = isActive(l.href);
             return (
@@ -78,7 +78,7 @@ export function Nav({
                 href={l.href}
                 aria-current={active ? "page" : undefined}
                 className={
-                  "shrink-0 whitespace-nowrap rounded-card px-2.5 py-1.5 font-mono text-xs uppercase tracking-wider transition-colors sm:px-3 " +
+                  "shrink-0 whitespace-nowrap rounded-card px-3 py-1.5 font-mono text-xs uppercase tracking-wider transition-colors " +
                   (active
                     ? "bg-raised text-teal"
                     : "text-muted hover:bg-raised hover:text-fg")
@@ -90,7 +90,7 @@ export function Nav({
           })}
         </nav>
 
-        <div className="relative shrink-0" ref={menuRef}>
+        <div className="relative ml-auto shrink-0" ref={menuRef}>
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
@@ -167,6 +167,32 @@ export function Nav({
             </div>
           )}
         </div>
+       </div>
+
+        {/* Mobile: full-width second row, so nothing is clipped by the menu. */}
+        <nav
+          aria-label="Primary"
+          className="-mx-1 mt-2 flex items-center gap-0.5 overflow-x-auto px-1 pb-0.5 sm:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {PRIMARY.map((l) => {
+            const active = isActive(l.href);
+            return (
+              <Link
+                key={l.href}
+                href={l.href}
+                aria-current={active ? "page" : undefined}
+                className={
+                  "shrink-0 whitespace-nowrap rounded-card px-3 py-1.5 font-mono text-xs uppercase tracking-wider transition-colors " +
+                  (active
+                    ? "bg-raised text-teal"
+                    : "text-muted hover:bg-raised hover:text-fg")
+                }
+              >
+                {l.label}
+              </Link>
+            );
+          })}
+        </nav>
       </div>
     </header>
   );

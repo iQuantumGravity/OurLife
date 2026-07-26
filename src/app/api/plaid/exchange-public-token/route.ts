@@ -2,12 +2,18 @@ import { NextResponse } from "next/server";
 import { getContext } from "@/lib/data";
 import { plaidClient } from "@/lib/plaid/client";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isPlaidConfigured } from "@/lib/config";
+import { isPlaidConfigured, isServiceRoleConfigured } from "@/lib/config";
 import { syncHouseholdTransactions } from "@/lib/plaid/sync";
 
 export async function POST(request: Request) {
   if (!isPlaidConfigured) {
     return NextResponse.json({ error: "Plaid not configured" }, { status: 503 });
+  }
+  if (!isServiceRoleConfigured) {
+    return NextResponse.json(
+      { error: "SUPABASE_SERVICE_ROLE_KEY is not set in this deployment." },
+      { status: 503 },
+    );
   }
   const ctx = await getContext();
   if (!ctx) {
