@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "enableAllProjectMcpServers": true,
+  "permissions": {
+    "allow": [
+      "mcp__supabase",
+      "mcp__5e17bb50-7e12-401d-82c5-78df83558893"
+    ]
+  }
+}
