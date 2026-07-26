@@ -1,6 +1,14 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { VoiceButton, appendSpoken } from "@/components/VoiceInput";
+
+export type ThreadSummary = {
+  id: string;
+  title: string | null;
+  updated_at: string;
+};
 
 export type AssistantDocument = {
   id: string;
@@ -29,6 +37,7 @@ type Props = {
   ready: boolean;
   notice: string | null;
   threadId: string | null;
+  threads: ThreadSummary[];
   initialMessages: AssistantMessage[];
   documents: AssistantDocument[];
   recentChanges: PlanChange[];
@@ -82,6 +91,7 @@ export default function AssistantChat({
   ready,
   notice,
   threadId: initialThreadId,
+  threads,
   initialMessages,
   documents,
   recentChanges,
@@ -214,6 +224,8 @@ export default function AssistantChat({
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
       <section className="flex min-h-[28rem] flex-col rounded-card border border-line bg-raised p-4">
+        <ThreadBar threads={threads} currentId={threadId} />
+
         {notice ? (
           <p className="mb-4 rounded-card border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-fg">
             {notice}
@@ -223,8 +235,9 @@ export default function AssistantChat({
         <div className="flex-1 space-y-4 overflow-y-auto">
           {bubbles.length === 0 ? (
             <div className="space-y-4">
+              <LifeUpdate onSend={send} disabled={!ready || busy} />
               <p className="text-sm text-muted">
-                Ask for a change, a read on where you stand, or point me at a statement you just
+                Or ask for a change, a read on where you stand, or point me at a statement you just
                 uploaded. Anything I change is written into the plan journal.
               </p>
               <div className="flex flex-wrap gap-2">
@@ -292,13 +305,20 @@ export default function AssistantChat({
             placeholder={ready ? "Tell me what changed, or ask what it means…" : "See the note above to get started"}
             className="min-h-[3rem] flex-1 resize-y rounded-card border border-line bg-sunken px-3 py-2 text-sm text-fg outline-none focus:border-teal disabled:opacity-60"
           />
-          <button
-            type="submit"
-            disabled={!ready || busy || !draft.trim()}
-            className="rounded-card bg-teal px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-          >
-            Send
-          </button>
+          <div className="flex items-center gap-2">
+            <VoiceButton
+              disabled={!ready || busy}
+              label="Dictate a message"
+              onText={(t) => setDraft((d) => appendSpoken(d, t))}
+            />
+            <button
+              type="submit"
+              disabled={!ready || busy || !draft.trim()}
+              className="flex-1 rounded-card bg-teal px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40 sm:flex-none"
+            >
+              Send
+            </button>
+          </div>
         </form>
       </section>
 
@@ -353,5 +373,121 @@ export default function AssistantChat({
         </div>
       </aside>
     </div>
+  );
+}
+
+
+/** Switch between past conversations, or start a fresh one. */
+function ThreadBar({
+  threads,
+  currentId,
+}: {
+  threads: ThreadSummary[];
+  currentId: string | null;
+}) {
+  return (
+    <div className="mb-4 flex items-center gap-2 border-b border-line pb-3">
+      <div className="-mx-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {threads.length === 0 ? (
+          <span className="font-mono text-[11px] uppercase tracking-wider text-muted">
+            New conversation
+          </span>
+        ) : (
+          threads.map((t) => {
+            const active = t.id === currentId;
+            return (
+              <Link
+                key={t.id}
+                href={`/assistant?thread=${t.id}`}
+                className={
+                  "max-w-[11rem] shrink-0 truncate rounded-card px-3 py-1.5 text-xs transition-colors " +
+                  (active
+                    ? "bg-sunken text-teal"
+                    : "text-muted hover:bg-sunken hover:text-fg")
+                }
+                title={t.title ?? "Conversation"}
+              >
+                {t.title?.trim() || "Conversation"}
+              </Link>
+            );
+          })
+        )}
+      </div>
+      <Link
+        href="/assistant?thread=new"
+        className={
+          "shrink-0 rounded-card border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition-colors " +
+          (currentId === null
+            ? "border-teal text-teal"
+            : "border-line text-muted hover:border-teal hover:text-teal")
+        }
+      >
+        + New
+      </Link>
+    </div>
+  );
+}
+
+/**
+ * A deliberately low-friction way to say what happened — the thing you'll
+ * actually do on a phone. It's the same pipeline as the chat box; the framing
+ * just invites reporting rather than asking.
+ */
+function LifeUpdate({
+  onSend,
+  disabled,
+}: {
+  onSend: (text: string) => void;
+  disabled?: boolean;
+}) {
+  const [text, setText] = useState("");
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const v = text.trim();
+    if (!v) return;
+    onSend(`Life update: ${v}`);
+    setText("");
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="rounded-card border border-teal/30 bg-teal/5 p-4"
+    >
+      <label
+        htmlFor="life-update"
+        className="font-mono text-[11px] uppercase tracking-wider text-teal"
+      >
+        Any life updates?
+      </label>
+      <p className="mt-1 text-xs text-muted">
+        A raise, a move, a big expense, a change of plan — say it plainly and
+        it gets folded into the plan and the journal.
+      </p>
+      <textarea
+        id="life-update"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={2}
+        disabled={disabled}
+        placeholder="e.g. I got promoted, take-home is now $6,200 a month"
+        className="mt-3 w-full resize-y rounded-card border border-line bg-sunken px-3 py-2 text-sm text-fg outline-none focus:border-teal disabled:opacity-60"
+      />
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <VoiceButton
+          disabled={disabled}
+          label="Speak your update"
+          onText={(t) => setText((d) => appendSpoken(d, t))}
+        />
+        <button
+          type="submit"
+          disabled={disabled || !text.trim()}
+          className="rounded-card bg-teal px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+        >
+          Log it
+        </button>
+      </div>
+    </form>
   );
 }

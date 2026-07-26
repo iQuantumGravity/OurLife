@@ -2,6 +2,7 @@ import AssistantChat, {
   type AssistantDocument,
   type AssistantMessage,
   type PlanChange,
+  type ThreadSummary,
 } from "@/components/AssistantChat";
 import { hasClaudeKey } from "@/lib/ai/anthropic";
 import { aiSupabase, currentHousehold, isSupabaseConfigured } from "@/lib/ai/household";
@@ -12,11 +13,16 @@ export const metadata = {
   title: "Assistant · OurLife",
 };
 
-export default async function AssistantPage() {
+export default async function AssistantPage({
+  searchParams,
+}: {
+  searchParams: { thread?: string };
+}) {
   const supabaseReady = isSupabaseConfigured();
   const claudeReady = hasClaudeKey();
 
   let threadId: string | null = null;
+  let threads: ThreadSummary[] = [];
   let messages: AssistantMessage[] = [];
   let documents: AssistantDocument[] = [];
   let recentChanges: PlanChange[] = [];
@@ -29,15 +35,24 @@ export default async function AssistantPage() {
     if (ctx) {
       signedIn = true;
 
-      const { data: thread } = await supabase
+      const { data: threadRows } = await supabase
         .from("chat_threads")
-        .select("id")
+        .select("id, title, updated_at")
         .eq("household_id", ctx.householdId)
         .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(50);
+      threads = (threadRows ?? []) as ThreadSummary[];
 
-      threadId = (thread?.id as string) ?? null;
+      // "?thread=new" deliberately resolves to no thread, so the next message
+      // starts a fresh conversation instead of appending to the last one.
+      const requested = searchParams.thread;
+      if (requested === "new") {
+        threadId = null;
+      } else if (requested && threads.some((t) => t.id === requested)) {
+        threadId = requested;
+      } else {
+        threadId = threads[0]?.id ?? null;
+      }
 
       if (threadId) {
         const { data: history } = await supabase
@@ -83,12 +98,14 @@ export default async function AssistantPage() {
   return (
     <div className="space-y-6">
       <header className="space-y-2">
-        <p className="font-mono text-xs uppercase tracking-widest text-muted">Assistant</p>
+        <p className="font-mono text-xs uppercase tracking-widest text-muted">
+          Assistant
+        </p>
         <h1 className="font-display text-3xl">Talk to the plan.</h1>
         <p className="max-w-2xl text-sm text-muted">
-          Ask questions, log what actually happened, run a what-if, or have an uploaded statement
-          read and folded in. Changes are made in the plan itself and written to a journal, so the
-          two of you can always see how it evolved.
+          Tell it what happened, ask where you stand, run a what-if, or have an
+          uploaded statement read in. Changes are made in the plan itself and
+          written to a journal, so the two of you can always see how it evolved.
         </p>
       </header>
 
@@ -96,6 +113,7 @@ export default async function AssistantPage() {
         ready={ready}
         notice={notice}
         threadId={threadId}
+        threads={threads}
         initialMessages={messages}
         documents={documents}
         recentChanges={recentChanges}
