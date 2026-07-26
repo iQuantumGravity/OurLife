@@ -4,7 +4,7 @@ import { getContext, getPayStubs, getDocuments, getPlaidConnections } from "@/li
 import { createClient } from "@/lib/supabase/server";
 import { listInvites, getOnboardingState } from "@/lib/onboarding/data";
 import { ProfileForm } from "./ProfileForm";
-import { CancelInviteButton } from "./CancelInviteButton";
+import { PartnerLink } from "./PartnerLink";
 import { dateLabel } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -150,42 +150,25 @@ export default async function AccountPage() {
             ))}
           </ul>
 
-          {pending.length > 0 && (
-            <>
-              <h3 className="mt-6 font-mono text-[11px] uppercase tracking-wider text-muted">
-                Pending invites
-              </h3>
-              <ul className="mt-2 flex flex-col gap-2">
-                {pending.map((inv) => (
-                  <li
-                    key={inv.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-line px-4 py-2.5 text-sm"
-                  >
-                    <div>
-                      <span className="text-fg">
-                        {inv.invitee_email ?? inv.invitee_phone}
-                      </span>
-                      <div className="text-xs text-muted">
-                        expires {dateLabel(inv.expires_at.slice(0, 10))}
-                      </div>
-                    </div>
-                    <CancelInviteButton inviteId={inv.id} />
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-
-          {members.length === 1 && pending.length === 0 && (
-            <p className="mt-5 rounded-card border border-dashed border-line p-4 text-sm text-muted">
-              It&apos;s just you right now.{" "}
-              <Link href="/onboarding" className="text-teal hover:underline">
-                Invite a partner
-              </Link>{" "}
-              to plan together — they&apos;ll get their own login and see the
-              same plan.
+          <div className="mt-6 border-t border-line pt-5">
+            <h3 className="mb-1 font-display text-base font-semibold">
+              {members.length > 1 ? "Add someone else" : "Add your partner"}
+            </h3>
+            <p className="mb-4 text-sm text-muted">
+              Search by email or phone. If they already have an account the
+              invite waits for them on next sign-in; if not, you get a link that
+              joins them here instead of starting them a separate plan.
             </p>
-          )}
+            <PartnerLink
+              canInvite={members.length < 2}
+              pending={pending.map((i) => ({
+                id: i.id,
+                contact: i.invitee_email ?? i.invitee_phone ?? "someone",
+                url: `/invite/${i.token}`,
+                expiresAt: i.expires_at,
+              }))}
+            />
+          </div>
         </div>
       </section>
 

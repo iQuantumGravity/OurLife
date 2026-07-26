@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 const PRIMARY = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/path", label: "Life path" },
+  { href: "/finances", label: "Finances" },
   { href: "/records", label: "Records" },
   { href: "/accounts", label: "Accounts" },
   { href: "/assistant", label: "Assistant" },

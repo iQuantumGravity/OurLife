@@ -50,30 +50,10 @@ create index if not exists pay_stubs_member_idx
 create index if not exists documents_uploader_idx
   on public.documents (household_id, uploaded_by, created_at desc);
 
--- ===========================================================================
--- household_people -- one row per member, with the display name the plan
--- should use for them. household_members already links users to households;
--- this view saves every caller from re-deriving "what do I call this person".
--- ===========================================================================
-create or replace view public.household_people
-with (security_invoker = true)
-as
-  select
-    hm.household_id,
-    hm.user_id,
-    coalesce(
-      nullif(trim(p.display_name), ''),
-      nullif(trim(hm.display_name), ''),
-      split_part(coalesce(u.email, ''), '@', 1),
-      'Member'
-    ) as name,
-    hm.role,
-    hm.created_at
-  from public.household_members hm
-  left join public.user_profiles p on p.user_id = hm.user_id
-  left join auth.users u on u.id = hm.user_id;
-
-grant select on public.household_people to authenticated;
+-- NOTE: this originally shipped as a security_invoker view, which silently
+-- returned nothing — `authenticated` has no SELECT on auth.users, so the join
+-- failed and every household reported zero people. Superseded by
+-- get_household_people() in 0011.
 
 create or replace function public.ourlife_schema_version()
 returns int

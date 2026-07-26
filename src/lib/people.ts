@@ -20,13 +20,14 @@ export async function getPeople(
   currentUserId: string,
 ): Promise<Person[]> {
   const supabase = createClient();
-  const { data } = await supabase
-    .from("household_people")
-    .select("user_id, name, created_at")
-    .eq("household_id", householdId)
-    .order("created_at", { ascending: true });
+  // A SECURITY DEFINER function, not a view: resolving a member's fallback
+  // name needs auth.users, which `authenticated` cannot read. An invoker-rights
+  // view silently returned zero people and hid the whole per-person split.
+  const { data } = await supabase.rpc("get_household_people", {
+    p_household_id: householdId,
+  });
 
-  return (data ?? []).map((r: any) => ({
+  return ((data as any[]) ?? []).map((r: any) => ({
     userId: r.user_id as string,
     name: (r.name as string) ?? "Member",
     isYou: r.user_id === currentUserId,
