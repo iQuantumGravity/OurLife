@@ -30,6 +30,26 @@ async function tableExists(table: string): Promise<boolean> {
   }
 }
 
+// Every migration from 0005 on bumps ourlife_schema_version(), so one number
+// tells us exactly how far the database has been brought forward. Checking a
+// handful of tables instead would report a database stuck on 0005 as fully
+// connected — the tables it looks for all exist by then, while goals, the
+// people lookup and the bootstrap function do not.
+//
+// Keep this list in step with supabase/migrations/. The last entry is what the
+// app requires to run correctly.
+const MIGRATIONS: { version: number; file: string; what: string }[] = [
+  { version: 5, file: "0005_harden_membership.sql", what: "restricts household membership to invites and bootstrap" },
+  { version: 6, file: "0006_lint_fixes.sql", what: "pins function search paths" },
+  { version: 7, file: "0007_bootstrap_household.sql", what: "lets a new sign-up create their household" },
+  { version: 8, file: "0008_per_person.sql", what: "attributes records to the person who logged them" },
+  { version: 9, file: "0009_join_household.sql", what: "makes accepting an invite safe under races" },
+  { version: 10, file: "0010_partner_lookup.sql", what: "partner search by email or phone" },
+  { version: 11, file: "0011_household_people_fn.sql", what: "reads household members without exposing auth.users" },
+  { version: 12, file: "0012_goals.sql", what: "goals, buckets and the goal event log" },
+];
+const REQUIRED_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
+
 /** Migrations that only change policies leave no table behind, so they report
  *  themselves through a version marker function instead. */
 async function schemaVersion(): Promise<number> {
@@ -59,6 +79,7 @@ export default async function SetupPage() {
       schemaVersion(),
     ]);
   const membershipHardened = version >= 5;
+  const outstanding = MIGRATIONS.filter((m) => m.version > version);
 
   const checks: Check[] = [
     {
@@ -108,6 +129,24 @@ export default async function SetupPage() {
         ? "Household membership is restricted to invites and bootstrap."
         : "SECURITY: the 0001 insert policy still lets any signed-in user add themselves to any household given its id.",
       fix: "Apply supabase/migrations/0005_harden_membership.sql — this one closes a real hole, not just a nice-to-have.",
+    },
+    {
+      label: `Schema up to date (through ${String(REQUIRED_VERSION).padStart(4, "0")})`,
+      status: !supabaseOk
+        ? "unknown"
+        : version >= REQUIRED_VERSION
+          ? "ok"
+          : "missing",
+      detail:
+        version >= REQUIRED_VERSION
+          ? `Database is at version ${version} — every migration in the repo has been applied.`
+          : version === 0
+            ? "Couldn't read the schema version, which means the database is older than 0005."
+            : `Database is at version ${version}. Pages that rely on the newer tables and functions — goals especially — will fail until the rest are applied.`,
+      fix:
+        outstanding.length > 0
+          ? `Apply, in order: ${outstanding.map((m) => m.file).join(", ")}. The last one (${outstanding[outstanding.length - 1].what}) is what most of the app now depends on.`
+          : "Apply every migration in supabase/migrations/ in filename order.",
     },
     {
       label: "Service-role key",
