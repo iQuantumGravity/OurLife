@@ -20,6 +20,7 @@ import { DebtStep } from "./DebtStep";
 import { Comparison } from "./Comparison";
 import { PlaidConnect } from "@/app/(app)/accounts/PlaidConnect";
 import { Uploader } from "@/app/(app)/records/Uploader";
+import { VoiceButton, appendSpoken } from "@/components/VoiceInput";
 
 type ActionResult = { ok?: true; error?: string } | undefined;
 
@@ -499,29 +500,44 @@ function GenericField({
         }}
       >
         {isTextarea ? (
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder={step.placeholder}
-            rows={5}
-            maxLength={2000}
-            disabled={locked}
-            className="rounded-card border border-line bg-sunken px-3 py-2 text-fg outline-none focus:border-teal disabled:opacity-60"
-          />
+          <div className="flex flex-col gap-2">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder={step.placeholder}
+              rows={5}
+              maxLength={2000}
+              disabled={locked}
+              className="rounded-card border border-line bg-sunken px-3 py-2 text-fg outline-none focus:border-teal disabled:opacity-60"
+            />
+            <VoiceButton
+              disabled={locked}
+              label="Speak your answer"
+              onText={(t) => setDraft((d) => appendSpoken(d, t))}
+            />
+          </div>
         ) : (
-          <input
-            type={step.kind === "number" ? "number" : "text"}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder={step.placeholder}
-            disabled={locked}
-            inputMode={step.kind === "number" ? "numeric" : undefined}
-            min={bounds?.min}
-            max={bounds?.max}
-            step={bounds?.step}
-            maxLength={step.kind === "number" ? undefined : 120}
-            className="rounded-card border border-line bg-sunken px-3 py-2 text-fg outline-none focus:border-teal disabled:opacity-60"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type={step.kind === "number" ? "number" : "text"}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder={step.placeholder}
+              disabled={locked}
+              inputMode={step.kind === "number" ? "numeric" : undefined}
+              min={bounds?.min}
+              max={bounds?.max}
+              step={bounds?.step}
+              maxLength={step.kind === "number" ? undefined : 120}
+              className="flex-1 rounded-card border border-line bg-sunken px-3 py-2 text-fg outline-none focus:border-teal disabled:opacity-60"
+            />
+            {step.kind !== "number" && (
+              <VoiceButton
+                disabled={locked}
+                onText={(t) => setDraft((d) => appendSpoken(d, t))}
+              />
+            )}
+          </div>
         )}
         <div className="flex items-center gap-4">
           <button

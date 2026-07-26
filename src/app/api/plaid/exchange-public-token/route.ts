@@ -36,6 +36,7 @@ export async function POST(request: Request) {
     const admin = createAdminClient();
     const { error } = await admin.from("plaid_items").insert({
       household_id: ctx.householdId,
+      owner_user_id: ctx.userId,
       item_id: exchange.data.item_id,
       access_token: exchange.data.access_token,
       institution_id: institutionId,

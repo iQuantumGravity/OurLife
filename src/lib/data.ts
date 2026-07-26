@@ -79,15 +79,19 @@ export async function getBaseline(
   return stored as Baseline;
 }
 
-export async function getPayStubs(householdId: string): Promise<PayStub[]> {
+export async function getPayStubs(
+  householdId: string,
+  ownerUserId?: string,
+): Promise<PayStub[]> {
   const supabase = createClient();
-  const { data } = await supabase
+  let q = supabase
     .from("pay_stubs")
     .select(
-      "id, earner, employer, pay_date, gross_amount, net_amount, taxes, retirement_contrib, other_deductions, is_commission, notes",
+      "id, earner, employer, pay_date, gross_amount, net_amount, taxes, retirement_contrib, other_deductions, is_commission, notes, member_user_id",
     )
-    .eq("household_id", householdId)
-    .order("pay_date", { ascending: false });
+    .eq("household_id", householdId);
+  if (ownerUserId) q = q.eq("member_user_id", ownerUserId);
+  const { data } = await q.order("pay_date", { ascending: false });
   return (data ?? []) as PayStub[];
 }
 
@@ -99,17 +103,22 @@ export interface DocumentRow {
   storage_path: string;
   status: string;
   created_at: string;
+  uploaded_by: string | null;
 }
 
 export async function getDocuments(
   householdId: string,
+  ownerUserId?: string,
 ): Promise<DocumentRow[]> {
   const supabase = createClient();
-  const { data } = await supabase
+  let q = supabase
     .from("documents")
-    .select("id, kind, label, period_label, storage_path, status, created_at")
-    .eq("household_id", householdId)
-    .order("created_at", { ascending: false });
+    .select(
+      "id, kind, label, period_label, storage_path, status, created_at, uploaded_by",
+    )
+    .eq("household_id", householdId);
+  if (ownerUserId) q = q.eq("uploaded_by", ownerUserId);
+  const { data } = await q.order("created_at", { ascending: false });
   return (data ?? []) as DocumentRow[];
 }
 
@@ -117,6 +126,7 @@ export interface PlaidConnection {
   id: string;
   institution_name: string | null;
   created_at: string;
+  owner_user_id: string | null;
 }
 
 /** Linked Plaid bank connections. Uses the admin client — plaid_items has no
@@ -133,7 +143,7 @@ export async function getPlaidConnections(
     const admin = createAdminClient();
     const { data } = await admin
       .from("plaid_items")
-      .select("id, institution_name, created_at")
+      .select("id, institution_name, created_at, owner_user_id")
       .eq("household_id", householdId)
       .order("created_at", { ascending: false });
     return (data ?? []) as PlaidConnection[];

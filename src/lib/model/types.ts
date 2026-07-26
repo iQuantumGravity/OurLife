@@ -87,6 +87,8 @@ export interface PayStub {
   other_deductions: number;
   is_commission: boolean;
   notes: string | null;
+  /** Which household member this paycheck belongs to. */
+  member_user_id?: string | null;
 }
 
 export interface MonthlyActual {

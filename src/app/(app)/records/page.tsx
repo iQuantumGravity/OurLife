@@ -6,6 +6,9 @@ import { PayStubForm } from "./PayStubForm";
 import { Uploader } from "./Uploader";
 import { deletePayStub, deleteDocument } from "./actions";
 import { usd, dateLabel, monthLabel } from "@/lib/format";
+import { getPeople, parseWho, nameFor } from "@/lib/people";
+import { PersonFilter, OwnerTag } from "@/components/PersonFilter";
+import type { Person } from "@/lib/people";
 
 export const dynamic = "force-dynamic";
 
@@ -21,16 +24,20 @@ const KIND_LABEL: Record<string, string> = {
 export default async function RecordsPage({
   searchParams,
 }: {
-  searchParams: { tab?: string };
+  searchParams: { tab?: string; who?: string };
 }) {
   const ctx = await getContext();
   if (!ctx) redirect("/login");
 
   const tab: Tab = searchParams.tab === "statements" ? "statements" : "stubs";
 
+  const people = await getPeople(ctx.householdId, ctx.userId);
+  const who = parseWho(searchParams.who, people);
+  const ownerFilter = who === "all" ? undefined : who;
+
   const [stubs, docs] = await Promise.all([
-    getPayStubs(ctx.householdId),
-    getDocuments(ctx.householdId),
+    getPayStubs(ctx.householdId, ownerFilter),
+    getDocuments(ctx.householdId, ownerFilter),
   ]);
 
   const totals = byEarner(stubs);
@@ -72,15 +79,27 @@ export default async function RecordsPage({
         />
       </div>
 
+      <PersonFilter
+        people={people}
+        who={who}
+        basePath="/records"
+        extraParams={{ tab }}
+      />
+
       {tab === "stubs" ? (
         <StubsPanel
           stubs={stubs}
           totals={totals}
           months={months}
           earners={earners}
+          people={people}
         />
       ) : (
-        <StatementsPanel docs={docs} householdId={ctx.householdId} />
+        <StatementsPanel
+          docs={docs}
+          householdId={ctx.householdId}
+          people={people}
+        />
       )}
     </div>
   );
@@ -122,11 +141,13 @@ function StubsPanel({
   totals,
   months,
   earners,
+  people,
 }: {
   stubs: Awaited<ReturnType<typeof getPayStubs>>;
   totals: ReturnType<typeof byEarner>;
   months: ReturnType<typeof stubsByMonth>;
   earners: string[];
+  people: Person[];
 }) {
   return (
     <div className="flex flex-col gap-8">
@@ -207,6 +228,12 @@ function StubsPanel({
                     </td>
                     <td className="px-4 py-3">
                       {s.earner}
+                      {people.length > 1 && s.member_user_id && (
+                        <OwnerTag
+                          name={nameFor(people, s.member_user_id)}
+                          isYou={people.find((p) => p.userId === s.member_user_id)?.isYou}
+                        />
+                      )}
                       {s.is_commission && (
                         <span className="ml-2 rounded bg-clay/10 px-1.5 py-0.5 font-mono text-[9px] uppercase text-clay">
                           comm
@@ -244,9 +271,11 @@ function StubsPanel({
 function StatementsPanel({
   docs,
   householdId,
+  people,
 }: {
   docs: Awaited<ReturnType<typeof getDocuments>>;
   householdId: string;
+  people: Person[];
 }) {
   return (
     <div className="flex flex-col gap-8">
@@ -281,7 +310,15 @@ function StatementsPanel({
               <tbody>
                 {docs.map((d) => (
                   <tr key={d.id} className="border-b border-line last:border-0">
-                    <td className="px-4 py-3">{KIND_LABEL[d.kind] ?? d.kind}</td>
+                    <td className="px-4 py-3">
+                      {KIND_LABEL[d.kind] ?? d.kind}
+                      {people.length > 1 && d.uploaded_by && (
+                        <OwnerTag
+                          name={nameFor(people, d.uploaded_by)}
+                          isYou={people.find((p) => p.userId === d.uploaded_by)?.isYou}
+                        />
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-muted">{d.label ?? "—"}</td>
                     <td className="px-4 py-3 text-muted">
                       {d.period_label ?? "—"}

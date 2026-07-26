@@ -15,7 +15,7 @@ export async function syncHouseholdTransactions(householdId: string) {
   const admin = createAdminClient();
   const { data: items } = await admin
     .from("plaid_items")
-    .select("id, access_token, cursor")
+    .select("id, access_token, cursor, owner_user_id")
     .eq("household_id", householdId);
 
   for (const item of items ?? []) {
@@ -40,6 +40,7 @@ export async function syncHouseholdTransactions(householdId: string) {
     const upserts = [...added, ...modified].map((t: any) => ({
       household_id: householdId,
       plaid_item_id: item.id,
+      owner_user_id: item.owner_user_id ?? null,
       plaid_transaction_id: t.transaction_id,
       account_id: t.account_id,
       name: t.name,
