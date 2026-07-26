@@ -1,5 +1,6 @@
 import "server-only";
 import type { PlanView } from "@/lib/plan";
+import type { GoalProgress } from "@/lib/goals/types";
 
 // ===========================================================================
 // The life path: the plan expressed as an ordered sequence of stages, each
@@ -41,11 +42,94 @@ function monthOf(d: Date): string {
   return d.toISOString().slice(0, 7);
 }
 
+/**
+ * How many stages there are, and how many are behind you.
+ *
+ * "Passed" only means anything for a stage with a date, so `dated` — not the
+ * raw stage count — is the honest denominator. Both the headline tile and the
+ * map read this, because two components counting the same thing differently
+ * is how a page ends up claiming "5 stages" above "0 of 4 stages passed".
+ */
+export interface StageCounts {
+  total: number;
+  dated: number;
+  done: number;
+  undated: number;
+}
+
+export function stageCounts(path: LifePath): StageCounts {
+  const dated = path.stages.filter((s) => s.status !== "undated");
+  return {
+    total: path.stages.length,
+    dated: dated.length,
+    done: dated.filter((s) => s.status === "done").length,
+    undated: path.stages.length - dated.length,
+  };
+}
+
 /** Months between two "YYYY-MM" strings; negative when b precedes a. */
 function monthsBetween(a: string, b: string): number {
   const [ay, am] = a.split("-").map(Number);
   const [by, bm] = b.split("-").map(Number);
   return (by - ay) * 12 + (bm - am);
+}
+
+/**
+ * Stages from real goals. Preferred over the onboarding-answer path: these
+ * carry their own allocated money and projected dates, so the road shows what
+ * is actually funded rather than what was once typed into a form.
+ */
+export function buildLifePathFromGoals(
+  goals: GoalProgress[],
+  now = new Date(),
+): LifePath {
+  const nowMonth = monthOf(now);
+  const active = goals.filter((g) => g.status !== "dropped");
+
+  const stages: PathStage[] = active.map((g) => {
+    const month = g.targetDate ? g.targetDate.slice(0, 7) : null;
+    const elapsed = month ? monthsBetween(nowMonth, month) : null;
+
+    let status: PathStage["status"];
+    if (g.status === "achieved") status = "done";
+    else if (!month) status = "undated";
+    else if (elapsed !== null && elapsed < 0) status = "done";
+    else if (elapsed !== null && elapsed <= 3) status = "current";
+    else status = "upcoming";
+
+    return {
+      id: g.id,
+      kind: "milestone",
+      name: g.name,
+      detail:
+        g.slipMonths !== null && g.slipMonths > 0
+          ? `${g.slipMonths} month${g.slipMonths === 1 ? "" : "s"} behind`
+          : (g.note ?? null),
+      month,
+      target: g.targetAmount,
+      saved: g.targetAmount !== null ? Math.min(g.savedAmount, g.targetAmount) : null,
+      progress: g.progress,
+      status,
+    };
+  });
+
+  stages.sort((a, b) => {
+    if (a.month && b.month) return a.month.localeCompare(b.month);
+    if (a.month) return -1;
+    if (b.month) return 1;
+    return 0;
+  });
+
+  const totalTarget = stages.reduce((s, x) => s + (x.target ?? 0), 0);
+  const totalAllocated = stages.reduce((s, x) => s + (x.saved ?? 0), 0);
+
+  return {
+    stages,
+    nowMonth,
+    overall: totalTarget > 0 ? totalAllocated / totalTarget : null,
+    totalTarget,
+    totalSaved: totalAllocated,
+  };
 }
 
 export function buildLifePath(plan: PlanView, now = new Date()): LifePath {

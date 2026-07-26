@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 // stays legible on a phone instead of scrolling to eight items.
 const PRIMARY = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/goals", label: "Goals" },
   { href: "/path", label: "Life path" },
   { href: "/finances", label: "Finances" },
   { href: "/records", label: "Records" },

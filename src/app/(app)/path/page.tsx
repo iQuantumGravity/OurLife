@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
 import { getContext } from "@/lib/data";
 import { getPlanView } from "@/lib/plan";
-import { buildLifePath } from "@/lib/model/path";
+import { buildLifePath, buildLifePathFromGoals, stageCounts } from "@/lib/model/path";
+import { getGoals } from "@/lib/goals/data";
+import { getSurplus } from "@/lib/goals/surplus";
+import { projectGoals } from "@/lib/goals/project";
 import { Elevation } from "@/components/Elevation";
 import { PathMap } from "./PathMap";
 import { usd } from "@/lib/format";
@@ -14,10 +17,27 @@ export default async function PathPage() {
   const ctx = await getContext();
   if (!ctx) redirect("/login");
 
-  const plan = await getPlanView(ctx.householdId, ctx.userId);
-  if (!plan.hasAnything) redirect("/onboarding");
+  const [plan, goals, surplus] = await Promise.all([
+    getPlanView(ctx.householdId, ctx.userId),
+    getGoals(ctx.householdId),
+    getSurplus(ctx.householdId),
+  ]);
+  if (!plan.hasAnything && goals.length === 0) redirect("/onboarding");
 
-  const path = buildLifePath(plan);
+  // Real goals win: they carry allocated money and projected dates. The
+  // onboarding-derived path is the fallback for households that haven't
+  // created goals yet.
+  const path =
+    goals.length > 0
+      ? buildLifePathFromGoals(
+          projectGoals({
+            goals,
+            monthlySurplus: surplus.monthlySurplus ?? 0,
+            liquidUnallocated: 0,
+          }),
+        )
+      : buildLifePath(plan);
+  const counts = stageCounts(path);
 
   return (
     <div className="flex flex-col gap-8">
@@ -38,15 +58,22 @@ export default async function PathPage() {
       <section className="grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line sm:grid-cols-3">
         <Tile
           label="Stages"
-          value={String(path.stages.length)}
-          sub={`${path.stages.filter((s) => s.status === "done").length} passed`}
+          value={String(counts.total)}
+          sub={
+            counts.undated > 0
+              ? `${counts.done} passed · ${counts.undated} undated`
+              : `${counts.done} passed`
+          }
         />
         <Tile
           label="Saved so far"
           value={path.totalSaved > 0 ? usd(path.totalSaved) : "—"}
           sub={path.totalSaved > 0 ? "liquid today" : "not set yet"}
         />
+        {/* Three tiles in a two-column grid leaves a hole on phones, which
+            reads as a missing figure rather than an empty cell. */}
         <Tile
+          className="col-span-2 sm:col-span-1"
           label="Everything ahead"
           value={path.totalTarget > 0 ? usd(path.totalTarget) : "—"}
           sub={
@@ -57,7 +84,7 @@ export default async function PathPage() {
         />
       </section>
 
-      <PathMap path={path} />
+      <PathMap path={path} counts={counts} />
 
       {plan.elevation.length > 0 && (
         <section>
@@ -77,13 +104,15 @@ function Tile({
   label,
   value,
   sub,
+  className,
 }: {
   label: string;
   value: string;
   sub?: string;
+  className?: string;
 }) {
   return (
-    <div className="bg-raised p-4">
+    <div className={"bg-raised p-4 " + (className ?? "")}>
       <div className="font-mono text-[10px] uppercase tracking-wider text-muted">
         {label}
       </div>

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import type { LifePath, PathStage } from "@/lib/model/path";
+import { useRef, useState } from "react";
+import type { LifePath, PathStage, StageCounts } from "@/lib/model/path";
 import { usd, monthLabel } from "@/lib/format";
 
 // ===========================================================================
@@ -28,20 +28,24 @@ const STATUS_STYLE: Record<PathStage["status"], { dot: string; ring: string; lab
   undated: { dot: "bg-line", ring: "border-line border-dashed", label: "No date" },
 };
 
-export function PathMap({ path }: { path: LifePath }) {
+// Counts arrive from the server rather than being recomputed here: the
+// headline tiles and this map must never disagree about how many stages there
+// are, and path.ts is server-only, so it can't be imported from a client
+// component anyway.
+export function PathMap({
+  path,
+  counts,
+}: {
+  path: LifePath;
+  counts: StageCounts;
+}) {
   const [zoom, setZoom] = useState<ZoomId>("mid");
   const [openId, setOpenId] = useState<string | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
 
   const scale = ZOOMS.find((z) => z.id === zoom)!.scale;
 
-  const { done, total } = useMemo(() => {
-    const dated = path.stages.filter((s) => s.status !== "undated");
-    return {
-      done: dated.filter((s) => s.status === "done").length,
-      total: dated.length,
-    };
-  }, [path.stages]);
+  const { done, dated } = counts;
 
   if (path.stages.length === 0) {
     return (
@@ -99,9 +103,9 @@ export function PathMap({ path }: { path: LifePath }) {
             ))}
           </div>
         </div>
-        {total > 0 && (
+        {dated > 0 && (
           <span className="font-mono text-[11px] uppercase tracking-wider text-muted">
-            {done} of {total} stages passed
+            {done} of {dated} dated stages passed
           </span>
         )}
       </div>

@@ -2,6 +2,11 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getContext } from "@/lib/data";
 import { getPlanView } from "@/lib/plan";
+import { getGoals } from "@/lib/goals/data";
+import { getSurplus } from "@/lib/goals/surplus";
+import { projectGoals } from "@/lib/goals/project";
+import { DailyFeedback } from "@/components/DailyFeedback";
+import { GoalsRollup } from "@/components/GoalsRollup";
 import { Elevation } from "@/components/Elevation";
 import { usd, usdK, monthLabel } from "@/lib/format";
 
@@ -14,19 +19,59 @@ export default async function DashboardPage() {
   // rather than rendering a hollow shell.
   if (!ctx) redirect("/login");
 
-  const plan = await getPlanView(ctx.householdId, ctx.userId);
+  const [plan, goals, surplus] = await Promise.all([
+    getPlanView(ctx.householdId, ctx.userId),
+    getGoals(ctx.householdId),
+    getSurplus(ctx.householdId),
+  ]);
+  const projected = projectGoals({
+    goals,
+    monthlySurplus: surplus.monthlySurplus ?? 0,
+    liquidUnallocated: 0,
+  });
 
   // Nothing real to show yet. Send them somewhere useful instead of rendering
   // a dashboard full of blanks (or, worse, someone else's sample numbers).
-  if (!plan.hasAnything) redirect("/onboarding");
+  if (!plan.hasAnything && goals.length === 0) redirect("/onboarding");
 
   const nowMonth = new Date().toISOString().slice(0, 7);
-  const dated = plan.goals.filter((g) => g.targetMonth);
-  const nextGoal =
-    dated.find((g) => (g.targetMonth as string) >= nowMonth) ??
-    dated[0] ??
-    plan.goals[0] ??
-    null;
+
+  // Real goals are the source of truth once they exist; onboarding answers are
+  // the fallback for a household that hasn't created any yet.
+  const nextGoal = (() => {
+    const fromGoals = projected
+      .filter((g) => g.status === "active" && g.targetDate)
+      .sort((a, b) =>
+        (a.targetDate as string).localeCompare(b.targetDate as string),
+      );
+    const upcoming =
+      fromGoals.find((g) => (g.targetDate as string).slice(0, 7) >= nowMonth) ??
+      fromGoals[0];
+    if (upcoming) {
+      return {
+        name: upcoming.name,
+        month: (upcoming.targetDate as string).slice(0, 7),
+        cost: upcoming.targetAmount,
+        slipMonths: upcoming.slipMonths,
+      };
+    }
+    if (projected.length > 0) {
+      return {
+        name: projected[0].name,
+        month: null,
+        cost: projected[0].targetAmount,
+        slipMonths: null,
+      };
+    }
+    const dated = plan.goals.filter((g) => g.targetMonth);
+    const p =
+      dated.find((g) => (g.targetMonth as string) >= nowMonth) ??
+      dated[0] ??
+      plan.goals[0];
+    return p
+      ? { name: p.name, month: p.targetMonth, cost: p.cost, slipMonths: null }
+      : null;
+  })();
 
   return (
     <div className="flex flex-col gap-10">
@@ -43,6 +88,8 @@ export default async function DashboardPage() {
           to make. Nothing here is estimated on your behalf.
         </p>
       </section>
+
+      <DailyFeedback surplus={surplus} goals={projected} />
 
       {/* snapshot tiles */}
       <section className="grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line md:grid-cols-4">
@@ -76,14 +123,17 @@ export default async function DashboardPage() {
           sub={
             nextGoal
               ? [
-                  nextGoal.targetMonth ? monthLabel(nextGoal.targetMonth) : null,
+                  nextGoal.month ? monthLabel(nextGoal.month) : null,
                   nextGoal.cost !== null ? usd(nextGoal.cost) : null,
+                  nextGoal.slipMonths !== null && nextGoal.slipMonths > 0
+                    ? `${nextGoal.slipMonths} mo late`
+                    : null,
                 ]
                   .filter(Boolean)
                   .join(" · ") || "no date set"
               : "add a goal"
           }
-          href={nextGoal ? undefined : "/onboarding"}
+          href={nextGoal ? undefined : "/goals"}
         />
         <Tile
           label="Paychecks logged"
@@ -170,31 +220,27 @@ export default async function DashboardPage() {
         </section>
       )}
 
-      {/* goals */}
-      <section>
-        <SubHead>
-          Milestones{" "}
-          {plan.goalsSource === "onboarding" && (
+      {/* Goals are the thing the app reasons about, so they lead. The
+          onboarding answers below are only shown while they haven't been
+          turned into goals — otherwise the page carries two lists of the same
+          ambitions, disagreeing about their progress. */}
+      {projected.length > 0 ? (
+        <GoalsRollup goals={projected} />
+      ) : plan.goals.length > 0 ? (
+        <section>
+          <SubHead>
+            What you said you&apos;re working toward{" "}
             <span className="font-body text-sm font-normal text-muted">
               — from your onboarding answers
             </span>
-          )}
-        </SubHead>
-        {plan.goals.length === 0 ? (
-          <EmptyState
-            title="No milestones yet."
-            body="Add what you're working toward and they'll show up here with their cost and timing."
-            cta={{ href: "/onboarding", label: "Add goals" }}
-          />
-        ) : (
+          </SubHead>
           <div className="overflow-x-auto rounded-card border border-line">
-            <table className="w-full min-w-[520px] border-collapse bg-raised text-sm">
+            <table className="w-full min-w-[420px] border-collapse bg-raised text-sm">
               <thead>
                 <tr className="border-b border-line text-left font-mono text-[11px] uppercase tracking-wider text-muted">
                   <th className="px-4 py-3 font-medium">Goal</th>
                   <th className="px-4 py-3 font-medium">When</th>
                   <th className="px-4 py-3 font-medium">Cost</th>
-                  <th className="px-4 py-3 font-medium">Funded from</th>
                 </tr>
               </thead>
               <tbody>
@@ -207,16 +253,29 @@ export default async function DashboardPage() {
                     <td className="px-4 py-3 font-mono tabular">
                       {g.cost !== null ? usd(g.cost) : "—"}
                     </td>
-                    <td className="px-4 py-3 text-muted">
-                      {g.fundedFrom ?? "—"}
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
-      </section>
+          <p className="mt-3 text-sm text-muted">
+            These are still just answers on a form.{" "}
+            <Link href="/goals" className="text-teal hover:underline">
+              Turn them into goals
+            </Link>{" "}
+            and they start tracking money and moving when you spend.
+          </p>
+        </section>
+      ) : (
+        <section>
+          <SubHead>Your goals</SubHead>
+          <EmptyState
+            title="No goals yet."
+            body="Shared dreams, individual ones, the deposit, the trip, retiring early — put them in buckets and the app can tell you what each one is costing the others."
+            cta={{ href: "/goals", label: "Add a goal" }}
+          />
+        </section>
+      )}
     </div>
   );
 }
